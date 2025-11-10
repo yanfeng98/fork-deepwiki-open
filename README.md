@@ -9,12 +9,7 @@
 3. Create visual diagrams to explain how everything works
 4. Organize it all into an easy-to-navigate wiki
 
-[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/sheing)
-[![Tip in Crypto](https://tip.md/badge.svg)](https://tip.md/sng-asyncfunc)
-[![Twitter/X](https://img.shields.io/badge/Twitter-1DA1F2?style=for-the-badge&logo=twitter&logoColor=white)](https://x.com/sashimikun_void)
-[![Discord](https://img.shields.io/badge/Discord-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/VQMBGR8u5v)
-
-[English](./README.md) | [简体中文](./README.zh.md) | [繁體中文](./README.zh-tw.md) | [日本語](./README.ja.md) | [Español](./README.es.md) | [한국어](./README.kr.md) | [Tiếng Việt](./README.vi.md) | [Português Brasileiro](./README.pt-br.md) | [Français](./README.fr.md) | [Русский](./README.ru.md)
+[English](./README.md) | [简体中文](./README.zh.md)
 
 ## ✨ Features
 
@@ -56,11 +51,6 @@ docker-compose up
 
 For detailed instructions on using DeepWiki with Ollama and Docker, see [Ollama Instructions](Ollama-instruction.md).
 
-> 💡 **Where to get these keys:**
-> - Get a Google API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
-> - Get an OpenAI API key from [OpenAI Platform](https://platform.openai.com/api-keys)
-> - Get Azure OpenAI credentials from [Azure Portal](https://portal.azure.com/) - create an Azure OpenAI resource and get the API key, endpoint, and API version
-
 ### Option 2: Manual Setup (Recommended)
 
 #### Step 1: Set Up Your API Keys
@@ -70,37 +60,29 @@ Create a `.env` file in the project root with these keys:
 ```
 GOOGLE_API_KEY=your_google_api_key
 OPENAI_API_KEY=your_openai_api_key
-# Optional: Use Google AI embeddings (recommended if using Google models)
-DEEPWIKI_EMBEDDER_TYPE=google
-# Optional: Add this if you want to use OpenRouter models
-OPENROUTER_API_KEY=your_openrouter_api_key
-# Optional: Add this if you want to use Azure OpenAI models
-AZURE_OPENAI_API_KEY=your_azure_openai_api_key
-AZURE_OPENAI_ENDPOINT=your_azure_openai_endpoint
-AZURE_OPENAI_VERSION=your_azure_openai_version
-# Optional: Add Ollama host if not local. default: http://localhost:11434
-OLLAMA_HOST=your_ollama_host
+OPENAI_BASE_URL=https://custom-api-endpoint.com/v1
+DEEPWIKI_EMBEDDER_TYPE=ollama
 ```
 
 #### Step 2: Start the Backend
 
 ```bash
-# Install Python dependencies
+conda create -n wiki python=3.12 -y
+conda activate wiki
 python -m pip install poetry==1.8.2 && poetry install -C api
+pip install mlflow
 
-# Start the API server
 python -m api.main
 ```
 
 #### Step 3: Start the Frontend
 
 ```bash
-# Install JavaScript dependencies
 npm install
 # or
 yarn install
 
-# Start the web app
+conda activate wiki
 npm run dev
 # or
 yarn dev
