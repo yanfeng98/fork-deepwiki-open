@@ -47,9 +47,8 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-# Models for the API
 class ChatMessage(BaseModel):
-    role: str  # 'user' or 'assistant'
+    role: str
     content: str
 
 class ChatCompletionRequest(BaseModel):
@@ -62,7 +61,6 @@ class ChatCompletionRequest(BaseModel):
     token: Optional[str] = Field(None, description="Personal access token for private repositories")
     type: Optional[str] = Field("github", description="Type of repository (e.g., 'github', 'gitlab', 'bitbucket')")
 
-    # model parameters
     provider: str = Field("google", description="Model provider (google, openai, openrouter, ollama, bedrock, azure)")
     model: Optional[str] = Field(None, description="Model name for the specified provider")
 

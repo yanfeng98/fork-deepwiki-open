@@ -1,35 +1,30 @@
 import os
 import logging
-from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from typing import List, Optional, Dict, Any, Literal
+from typing import List, Optional, Dict, Literal
 import json
 from datetime import datetime
 from pydantic import BaseModel, Field
-import google.generativeai as genai
 import asyncio
 
-# Configure logging
 from api.logging_config import setup_logging
 
 setup_logging()
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
-
-# Initialize FastAPI app
-app = FastAPI(
+app: FastAPI = FastAPI(
     title="Streaming API",
     description="API for streaming chat completions"
 )
 
-# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Helper function to get adalflow root path
@@ -390,11 +385,9 @@ def generate_json_export(repo_url: str, pages: List[WikiPage]) -> str:
     # Convert to JSON string with pretty formatting
     return json.dumps(export_data, indent=2)
 
-# Import the simplified chat implementation
 from api.simple_chat import chat_completions_stream
 from api.websocket_wiki import handle_websocket_chat
 
-# Add the chat_completions_stream endpoint to the main app
 app.add_api_route("/chat/completions/stream", chat_completions_stream, methods=["POST"])
 
 # Add the WebSocket endpoint
