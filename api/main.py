@@ -3,42 +3,34 @@ import sys
 import logging
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
 
 from api.logging_config import setup_logging
 
-# Configure logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
-# Configure watchfiles logger to show file paths
 watchfiles_logger = logging.getLogger("watchfiles.main")
-watchfiles_logger.setLevel(logging.DEBUG)  # Enable DEBUG to see file paths
+watchfiles_logger.setLevel(logging.DEBUG)
 
-# Add the current directory to the path so we can import the api package
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Apply watchfiles monkey patch BEFORE uvicorn import
-is_development = os.environ.get("NODE_ENV") != "production"
+is_development: bool = os.environ.get("NODE_ENV") != "production"
 if is_development:
     import watchfiles
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    logs_dir = os.path.join(current_dir, "logs")
-    
+    current_dir: str = os.path.dirname(os.path.abspath(__file__))
+    logs_dir: str = os.path.join(current_dir, "logs")
+
     original_watch = watchfiles.watch
     def patched_watch(*args, **kwargs):
-        # Only watch the api directory but exclude logs subdirectory
-        # Instead of watching the entire api directory, watch specific subdirectories
-        api_subdirs = []
+        api_subdirs: list[str] = []
         for item in os.listdir(current_dir):
             item_path = os.path.join(current_dir, item)
             if os.path.isdir(item_path) and item != "logs":
                 api_subdirs.append(item_path)
-        
-        # Also add Python files in the api root directory
+
         api_subdirs.append(current_dir + "/*.py")
-        
+
         return original_watch(*api_subdirs, **kwargs)
     watchfiles.watch = patched_watch
 
