@@ -74,20 +74,18 @@ class ChatCompletionRequest(BaseModel):
 async def chat_completions_stream(request: ChatCompletionRequest):
     """Stream a chat completion response directly using Google Generative AI"""
     try:
-        # Check if request contains very large input
-        input_too_large = False
+        input_too_large: bool = False
         if request.messages and len(request.messages) > 0:
-            last_message = request.messages[-1]
+            last_message: str = request.messages[-1]
             if hasattr(last_message, 'content') and last_message.content:
-                tokens = count_tokens(last_message.content, request.provider == "ollama")
+                tokens: int = count_tokens(last_message.content)
                 logger.info(f"Request size: {tokens} tokens")
                 if tokens > 8000:
                     logger.warning(f"Request exceeds recommended token limit ({tokens} > 7500)")
                     input_too_large = True
 
-        # Create a new RAG instance for this request
         try:
-            request_rag = RAG(provider=request.provider, model=request.model)
+            request_rag: RAG = RAG(provider=request.provider, model=request.model)
 
             # Extract custom file filter parameters if provided
             excluded_dirs = None

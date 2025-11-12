@@ -25,45 +25,24 @@ logger = logging.getLogger(__name__)
 MAX_EMBEDDING_TOKENS = 8192
 
 def count_tokens(text: str, embedder_type: str = None, is_ollama_embedder: bool = None) -> int:
-    """
-    Count the number of tokens in a text string using tiktoken.
-
-    Args:
-        text (str): The text to count tokens for.
-        embedder_type (str, optional): The embedder type ('openai', 'google', 'ollama').
-                                     If None, will be determined from configuration.
-        is_ollama_embedder (bool, optional): DEPRECATED. Use embedder_type instead.
-                                           If None, will be determined from configuration.
-
-    Returns:
-        int: The number of tokens in the text.
-    """
     try:
-        # Handle backward compatibility
         if embedder_type is None and is_ollama_embedder is not None:
             embedder_type = 'ollama' if is_ollama_embedder else None
         
-        # Determine embedder type if not specified
         if embedder_type is None:
             from api.config import get_embedder_type
-            embedder_type = get_embedder_type()
+            embedder_type: str = get_embedder_type()
 
-        # Choose encoding based on embedder type
         if embedder_type == 'ollama':
-            # Ollama typically uses cl100k_base encoding
             encoding = tiktoken.get_encoding("cl100k_base")
         elif embedder_type == 'google':
-            # Google uses similar tokenization to GPT models for rough estimation
             encoding = tiktoken.get_encoding("cl100k_base")
-        else:  # OpenAI or default
-            # Use OpenAI embedding model encoding
+        else:
             encoding = tiktoken.encoding_for_model("text-embedding-3-small")
 
         return len(encoding.encode(text))
     except Exception as e:
-        # Fallback to a simple approximation if tiktoken fails
         logger.warning(f"Error counting tokens with tiktoken: {e}")
-        # Rough approximation: 4 characters per token
         return len(text) // 4
 
 def download_repo(repo_url: str, local_path: str, repo_type: str = None, access_token: str = None) -> str:

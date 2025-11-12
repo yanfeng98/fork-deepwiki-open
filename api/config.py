@@ -43,14 +43,10 @@ raw_auth_mode = os.environ.get('DEEPWIKI_AUTH_MODE', 'False')
 WIKI_AUTH_MODE = raw_auth_mode.lower() in ['true', '1', 't']
 WIKI_AUTH_CODE = os.environ.get('DEEPWIKI_AUTH_CODE', '')
 
-# Embedder settings
-EMBEDDER_TYPE = os.environ.get('DEEPWIKI_EMBEDDER_TYPE', 'openai').lower()
+EMBEDDER_TYPE: str = os.environ.get('DEEPWIKI_EMBEDDER_TYPE', 'openai').lower()
+CONFIG_DIR: str = os.environ.get('DEEPWIKI_CONFIG_DIR', None)
 
-# Get configuration directory from environment variable, or use default if not set
-CONFIG_DIR = os.environ.get('DEEPWIKI_CONFIG_DIR', None)
-
-# Client class mapping
-CLIENT_CLASSES = {
+CLIENT_CLASSES: Dict[str, Any] = {
     "GoogleGenAIClient": GoogleGenAIClient,
     "GoogleEmbedderClient": GoogleEmbedderClient,
     "OpenAIClient": OpenAIClient,
@@ -61,18 +57,57 @@ CLIENT_CLASSES = {
     "DashscopeClient": DashscopeClient
 }
 
+def load_generator_config() -> dict[str, Any]:
+    generator_config: dict[str, Any] = load_json_config("generator.json")
+
+    if "providers" in generator_config:
+        for provider_id, provider_config in generator_config["providers"].items():
+            if provider_config.get("client_class") in CLIENT_CLASSES:
+                provider_config["model_client"] = CLIENT_CLASSES[provider_config["client_class"]]
+            elif provider_id in ["google", "openai", "openrouter", "ollama", "bedrock", "azure", "dashscope"]:
+                default_map: dict[str, Any] = {
+                    "google": GoogleGenAIClient,
+                    "openai": OpenAIClient,
+                    "openrouter": OpenRouterClient,
+                    "ollama": OllamaClient,
+                    "bedrock": BedrockClient,
+                    "azure": AzureAIClient,
+                    "dashscope": DashscopeClient
+                }
+                provider_config["model_client"] = default_map[provider_id]
+            else:
+                logger.warning(f"Unknown provider or client class: {provider_id}")
+
+    return generator_config
+
+def load_json_config(filename: str) -> dict[str, Any]:
+    try:
+        if CONFIG_DIR:
+            config_path: Path = Path(CONFIG_DIR) / filename
+        else:
+            config_path: Path = Path(__file__).parent / "config" / filename
+
+        logger.info(f"Loading configuration from {config_path}")
+
+        if not config_path.exists():
+            logger.warning(f"Configuration file {config_path} does not exist")
+            return {}
+
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config: dict[str, Any] = json.load(f)
+            config = replace_env_placeholders(config)
+            return config
+    except Exception as e:
+        logger.error(f"Error loading configuration file {filename}: {str(e)}")
+        return {}
+
 def replace_env_placeholders(config: Union[Dict[str, Any], List[Any], str, Any]) -> Union[Dict[str, Any], List[Any], str, Any]:
-    """
-    Recursively replace placeholders like "${ENV_VAR}" in string values
-    within a nested configuration structure (dicts, lists, strings)
-    with environment variable values. Logs a warning if a placeholder is not found.
-    """
     pattern = re.compile(r"\$\{([A-Z0-9_]+)\}")
 
     def replacer(match: re.Match[str]) -> str:
-        env_var_name = match.group(1)
-        original_placeholder = match.group(0)
-        env_var_value = os.environ.get(env_var_name)
+        env_var_name: str = match.group(1)
+        original_placeholder: str = match.group(0)
+        env_var_value: str = os.environ.get(env_var_name)
         if env_var_value is None:
             logger.warning(
                 f"Environment variable placeholder '{original_placeholder}' was not found in the environment. "
@@ -88,149 +123,24 @@ def replace_env_placeholders(config: Union[Dict[str, Any], List[Any], str, Any])
     elif isinstance(config, str):
         return pattern.sub(replacer, config)
     else:
-        # Handles numbers, booleans, None, etc.
         return config
 
-# Load JSON configuration file
-def load_json_config(filename):
-    try:
-        # If environment variable is set, use the directory specified by it
-        if CONFIG_DIR:
-            config_path = Path(CONFIG_DIR) / filename
-        else:
-            # Otherwise use default directory
-            config_path = Path(__file__).parent / "config" / filename
-
-        logger.info(f"Loading configuration from {config_path}")
-
-        if not config_path.exists():
-            logger.warning(f"Configuration file {config_path} does not exist")
-            return {}
-
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-            config = replace_env_placeholders(config)
-            return config
-    except Exception as e:
-        logger.error(f"Error loading configuration file {filename}: {str(e)}")
-        return {}
-
-# Load generator model configuration
-def load_generator_config():
-    generator_config = load_json_config("generator.json")
-
-    # Add client classes to each provider
-    if "providers" in generator_config:
-        for provider_id, provider_config in generator_config["providers"].items():
-            # Try to set client class from client_class
-            if provider_config.get("client_class") in CLIENT_CLASSES:
-                provider_config["model_client"] = CLIENT_CLASSES[provider_config["client_class"]]
-            # Fall back to default mapping based on provider_id
-            elif provider_id in ["google", "openai", "openrouter", "ollama", "bedrock", "azure", "dashscope"]:
-                default_map = {
-                    "google": GoogleGenAIClient,
-                    "openai": OpenAIClient,
-                    "openrouter": OpenRouterClient,
-                    "ollama": OllamaClient,
-                    "bedrock": BedrockClient,
-                    "azure": AzureAIClient,
-                    "dashscope": DashscopeClient
-                }
-                provider_config["model_client"] = default_map[provider_id]
-            else:
-                logger.warning(f"Unknown provider or client class: {provider_id}")
-
-    return generator_config
-
-# Load embedder configuration
 def load_embedder_config():
-    embedder_config = load_json_config("embedder.json")
+    embedder_config: dict[str, Any] = load_json_config("embedder.json")
 
-    # Process client classes
     for key in ["embedder", "embedder_ollama", "embedder_google"]:
         if key in embedder_config and "client_class" in embedder_config[key]:
-            class_name = embedder_config[key]["client_class"]
+            class_name: str = embedder_config[key]["client_class"]
             if class_name in CLIENT_CLASSES:
                 embedder_config[key]["model_client"] = CLIENT_CLASSES[class_name]
 
     return embedder_config
 
-def get_embedder_config():
-    """
-    Get the current embedder configuration based on DEEPWIKI_EMBEDDER_TYPE.
-
-    Returns:
-        dict: The embedder configuration with model_client resolved
-    """
-    embedder_type = EMBEDDER_TYPE
-    if embedder_type == 'google' and 'embedder_google' in configs:
-        return configs.get("embedder_google", {})
-    elif embedder_type == 'ollama' and 'embedder_ollama' in configs:
-        return configs.get("embedder_ollama", {})
-    else:
-        return configs.get("embedder", {})
-
-def is_ollama_embedder():
-    """
-    Check if the current embedder configuration uses OllamaClient.
-
-    Returns:
-        bool: True if using OllamaClient, False otherwise
-    """
-    embedder_config = get_embedder_config()
-    if not embedder_config:
-        return False
-
-    # Check if model_client is OllamaClient
-    model_client = embedder_config.get("model_client")
-    if model_client:
-        return model_client.__name__ == "OllamaClient"
-
-    # Fallback: check client_class string
-    client_class = embedder_config.get("client_class", "")
-    return client_class == "OllamaClient"
-
-def is_google_embedder():
-    """
-    Check if the current embedder configuration uses GoogleEmbedderClient.
-
-    Returns:
-        bool: True if using GoogleEmbedderClient, False otherwise
-    """
-    embedder_config = get_embedder_config()
-    if not embedder_config:
-        return False
-
-    # Check if model_client is GoogleEmbedderClient
-    model_client = embedder_config.get("model_client")
-    if model_client:
-        return model_client.__name__ == "GoogleEmbedderClient"
-
-    # Fallback: check client_class string
-    client_class = embedder_config.get("client_class", "")
-    return client_class == "GoogleEmbedderClient"
-
-def get_embedder_type():
-    """
-    Get the current embedder type based on configuration.
-    
-    Returns:
-        str: 'ollama', 'google', or 'openai' (default)
-    """
-    if is_ollama_embedder():
-        return 'ollama'
-    elif is_google_embedder():
-        return 'google'
-    else:
-        return 'openai'
-
-# Load repository and file filters configuration
 def load_repo_config():
     return load_json_config("repo.json")
 
-# Load language configuration
 def load_lang_config():
-    default_config = {
+    default_config: dict[str, Any] = {
         "supported_languages": {
             "en": "English",
             "ja": "Japanese (日本語)",
@@ -246,7 +156,7 @@ def load_lang_config():
         "default": "en"
     }
 
-    loaded_config = load_json_config("lang.json") # Let load_json_config handle path and loading
+    loaded_config: dict[str, Any] = load_json_config("lang.json")
 
     if not loaded_config:
         return default_config
@@ -256,6 +166,71 @@ def load_lang_config():
         return default_config
 
     return loaded_config
+
+configs = {}
+
+generator_config: dict[str, Any] = load_generator_config()
+embedder_config: dict[str, Any] = load_embedder_config()
+repo_config: dict[str, Any] = load_repo_config()
+lang_config: dict[str, Any] = load_lang_config()
+
+if generator_config:
+    configs["default_provider"] = generator_config.get("default_provider", "google")
+    configs["providers"] = generator_config.get("providers", {})
+
+if embedder_config:
+    for key in ["embedder", "embedder_ollama", "embedder_google", "retriever", "text_splitter"]:
+        if key in embedder_config:
+            configs[key] = embedder_config[key]
+
+if repo_config:
+    for key in ["file_filters", "repository"]:
+        if key in repo_config:
+            configs[key] = repo_config[key]
+
+if lang_config:
+    configs["lang_config"] = lang_config
+
+def get_embedder_type() -> str:
+    if is_ollama_embedder():
+        return 'ollama'
+    elif is_google_embedder():
+        return 'google'
+    else:
+        return 'openai'
+
+def is_ollama_embedder() -> bool:
+    embedder_config: dict[str, Any] = get_embedder_config()
+    if not embedder_config:
+        return False
+
+    model_client = embedder_config.get("model_client")
+    if model_client:
+        return model_client.__name__ == "OllamaClient"
+
+    client_class: str = embedder_config.get("client_class", "")
+    return client_class == "OllamaClient"
+
+def get_embedder_config():
+    embedder_type: str = EMBEDDER_TYPE
+    if embedder_type == 'google' and 'embedder_google' in configs:
+        return configs.get("embedder_google", {})
+    elif embedder_type == 'ollama' and 'embedder_ollama' in configs:
+        return configs.get("embedder_ollama", {})
+    else:
+        return configs.get("embedder", {})
+
+def is_google_embedder():
+    embedder_config: dict[str, Any] = get_embedder_config()
+    if not embedder_config:
+        return False
+
+    model_client = embedder_config.get("model_client")
+    if model_client:
+        return model_client.__name__ == "GoogleEmbedderClient"
+
+    client_class: str = embedder_config.get("client_class", "")
+    return client_class == "GoogleEmbedderClient"
 
 # Default excluded directories and files
 DEFAULT_EXCLUDED_DIRS: List[str] = [
@@ -297,37 +272,6 @@ DEFAULT_EXCLUDED_FILES: List[str] = [
     ".nyc_output", ".tox", "dist", "build", "bld", "out", "bin", "target",
     "packages/*/dist", "packages/*/build", ".output"
 ]
-
-# Initialize empty configuration
-configs = {}
-
-# Load all configuration files
-generator_config = load_generator_config()
-embedder_config = load_embedder_config()
-repo_config = load_repo_config()
-lang_config = load_lang_config()
-
-# Update configuration
-if generator_config:
-    configs["default_provider"] = generator_config.get("default_provider", "google")
-    configs["providers"] = generator_config.get("providers", {})
-
-# Update embedder configuration
-if embedder_config:
-    for key in ["embedder", "embedder_ollama", "embedder_google", "retriever", "text_splitter"]:
-        if key in embedder_config:
-            configs[key] = embedder_config[key]
-
-# Update repository configuration
-if repo_config:
-    for key in ["file_filters", "repository"]:
-        if key in repo_config:
-            configs[key] = repo_config[key]
-
-# Update language configuration
-if lang_config:
-    configs["lang_config"] = lang_config
-
 
 def get_model_config(provider="google", model=None):
     """
