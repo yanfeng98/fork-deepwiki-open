@@ -1,8 +1,7 @@
 import logging
 import weakref
-import re
 from dataclasses import dataclass
-from typing import Any, List, Tuple, Dict
+from typing import List, Tuple, Dict
 from uuid import uuid4
 
 import adalflow as adal
@@ -26,13 +25,11 @@ class DialogTurn:
     assistant_response: AssistantResponse
 
 class CustomConversation:
-    """Custom implementation of Conversation to fix the list assignment index out of range error"""
 
     def __init__(self):
         self.dialog_turns = []
 
     def append_dialog_turn(self, dialog_turn):
-        """Safely append a dialog turn to the conversation"""
         if not hasattr(self, 'dialog_turns'):
             self.dialog_turns = []
         self.dialog_turns.append(dialog_turn)
@@ -49,12 +46,10 @@ logger = logging.getLogger(__name__)
 MAX_INPUT_TOKENS = 7500  # Safe threshold below 8192 token limit
 
 class Memory(adal.core.component.DataComponent):
-    """Simple conversation management with a list of dialog turns."""
 
     def __init__(self):
         super().__init__()
-        # Use our custom implementation instead of the original Conversation class
-        self.current_conversation = CustomConversation()
+        self.current_conversation: CustomConversation = CustomConversation()
 
     def call(self) -> Dict:
         """Return the conversation history as a dictionary."""
@@ -151,49 +146,33 @@ class RAGAnswer(adal.DataClass):
     __output_fields__ = ["rationale", "answer"]
 
 class RAG(adal.Component):
-    """RAG with one repo.
-    If you want to load a new repos, call prepare_retriever(repo_url_or_path) first."""
 
-    def __init__(self, provider="google", model=None, use_s3: bool = False):  # noqa: F841 - use_s3 is kept for compatibility
-        """
-        Initialize the RAG component.
-
-        Args:
-            provider: Model provider to use (google, openai, openrouter, ollama)
-            model: Model name to use with the provider
-            use_s3: Whether to use S3 for database storage (default: False)
-        """
+    def __init__(self, provider: str = "google", model: str = None, use_s3: bool = False):  # noqa: F841 - use_s3 is kept for compatibility
         super().__init__()
 
-        self.provider = provider
-        self.model = model
+        self.provider: str = provider
+        self.model: str = model
 
-        # Import the helper functions
         from api.config import get_embedder_config, get_embedder_type
 
-        # Determine embedder type based on current configuration
-        self.embedder_type = get_embedder_type()
-        self.is_ollama_embedder = (self.embedder_type == 'ollama')  # Backward compatibility
+        self.embedder_type: str = get_embedder_type()
+        self.is_ollama_embedder: bool = (self.embedder_type == 'ollama')
 
-        # Check if Ollama model exists before proceeding
         if self.is_ollama_embedder:
             from api.ollama_patch import check_ollama_model_exists
-            from api.config import get_embedder_config
             
-            embedder_config = get_embedder_config()
+            embedder_config: dict[str, dict[str, str]] = get_embedder_config()
             if embedder_config and embedder_config.get("model_kwargs", {}).get("model"):
-                model_name = embedder_config["model_kwargs"]["model"]
+                model_name: str = embedder_config["model_kwargs"]["model"]
                 if not check_ollama_model_exists(model_name):
                     raise Exception(f"Ollama model '{model_name}' not found. Please run 'ollama pull {model_name}' to install it.")
 
-        # Initialize components
-        self.memory = Memory()
-        self.embedder = get_embedder(embedder_type=self.embedder_type)
+        self.memory: Memory = Memory()
+        self.embedder: adal.Embedder = get_embedder(embedder_type=self.embedder_type)
 
         self_weakref = weakref.ref(self)
-        # Patch: ensure query embedding is always single string for Ollama
+
         def single_string_embedder(query):
-            # Accepts either a string or a list, always returns embedding for a single string
             if isinstance(query, list):
                 if len(query) != 1:
                     raise ValueError("Ollama embedder only supports a single string")
@@ -202,7 +181,6 @@ class RAG(adal.Component):
             assert instance is not None, "RAG instance is no longer available, but the query embedder was called."
             return instance.embedder(input=query)
 
-        # Use single string embedder for Ollama, regular embedder for others
         self.query_embedder = single_string_embedder if self.is_ollama_embedder else self.embedder
 
         self.initialize_db_manager()

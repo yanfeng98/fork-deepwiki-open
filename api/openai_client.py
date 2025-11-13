@@ -53,11 +53,7 @@ from adalflow.components.model_client.utils import parse_embedding_response
 log = logging.getLogger(__name__)
 T = TypeVar("T")
 
-
-# completion parsing functions and you can combine them into one singple chat completion parser
 def get_first_message_content(completion: ChatCompletion) -> str:
-    r"""When we only need the content of the first message.
-    It is the default parser for chat completion."""
     log.debug(f"raw completion: {completion}")
     return completion.choices[0].message.content
 
@@ -167,28 +163,21 @@ class OpenAIClient(ModelClient):
         env_base_url_name: str = "OPENAI_BASE_URL",
         env_api_key_name: str = "OPENAI_API_KEY",
     ):
-        r"""It is recommended to set the OPENAI_API_KEY environment variable instead of passing it as an argument.
-
-        Args:
-            api_key (Optional[str], optional): OpenAI API key. Defaults to None.
-            base_url (str): The API base URL to use when initializing the client.
-            env_api_key_name (str): The environment variable name for the API key. Defaults to `"OPENAI_API_KEY"`.
-        """
         super().__init__()
-        self._api_key = api_key
-        self._env_api_key_name = env_api_key_name
-        self._env_base_url_name = env_base_url_name
-        self.base_url = base_url or os.getenv(self._env_base_url_name, "https://api.openai.com/v1")
-        self.sync_client = self.init_sync_client()
-        self.async_client = None  # only initialize if the async call is called
-        self.chat_completion_parser = (
+        self._api_key: Optional[str] = api_key
+        self._env_api_key_name: str = env_api_key_name
+        self._env_base_url_name: str = env_base_url_name
+        self.base_url: str = base_url or os.getenv(self._env_base_url_name, "https://api.openai.com/v1")
+        self.sync_client: OpenAI = self.init_sync_client()
+        self.async_client = None
+        self.chat_completion_parser: Callable[[Completion], Any] = (
             chat_completion_parser or get_first_message_content
         )
-        self._input_type = input_type
-        self._api_kwargs = {}  # add api kwargs when the OpenAI Client is called
+        self._input_type: Literal["text", "messages"] = input_type
+        self._api_kwargs = {}
 
     def init_sync_client(self):
-        api_key = self._api_key or os.getenv(self._env_api_key_name)
+        api_key: str = self._api_key or os.getenv(self._env_api_key_name)
         if not api_key:
             raise ValueError(
                 f"Environment variable {self._env_api_key_name} must be set"
@@ -585,45 +574,3 @@ class OpenAIClient(ModelClient):
                     },
                 }
         return image_source
-
-
-# Example usage:
-if __name__ == "__main__":
-    from adalflow.core import Generator
-    from adalflow.utils import setup_env
-
-    # log = get_logger(level="DEBUG")
-
-    setup_env()
-    prompt_kwargs = {"input_str": "What is the meaning of life?"}
-
-    gen = Generator(
-        model_client=OpenAIClient(),
-        model_kwargs={"model": "gpt-4o", "stream": False},
-    )
-    gen_response = gen(prompt_kwargs)
-    print(f"gen_response: {gen_response}")
-
-    # for genout in gen_response.data:
-    #     print(f"genout: {genout}")
-
-    # test that to_dict and from_dict works
-    # model_client = OpenAIClient()
-    # model_client_dict = model_client.to_dict()
-    # from_dict_model_client = OpenAIClient.from_dict(model_client_dict)
-    # assert model_client_dict == from_dict_model_client.to_dict()
-
-
-if __name__ == "__main__":
-    import adalflow as adal
-
-    # setup env or pass the api_key
-    from adalflow.utils import setup_env
-
-    setup_env()
-
-    openai_llm = adal.Generator(
-        model_client=OpenAIClient(), model_kwargs={"model": "gpt-4o"}
-    )
-    resopnse = openai_llm(prompt_kwargs={"input_str": "What is LLM?"})
-    print(resopnse)
