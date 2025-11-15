@@ -167,7 +167,7 @@ def load_lang_config():
 
     return loaded_config
 
-configs = {}
+configs: dict[str, dict[str, Any]] = {}
 
 generator_config: dict[str, Any] = load_generator_config()
 embedder_config: dict[str, Any] = load_embedder_config()
@@ -232,7 +232,44 @@ def is_google_embedder():
     client_class: str = embedder_config.get("client_class", "")
     return client_class == "GoogleEmbedderClient"
 
-# Default excluded directories and files
+def get_model_config(provider: str = "google", model: str = None) -> dict[str, int|float|Any]:
+    if "providers" not in configs:
+        raise ValueError("Provider configuration not loaded")
+
+    provider_config: dict[str, Any] = configs["providers"].get(provider)
+    if not provider_config:
+        raise ValueError(f"Configuration for provider '{provider}' not found")
+
+    model_client = provider_config.get("model_client")
+    if not model_client:
+        raise ValueError(f"Model client not specified for provider '{provider}'")
+
+    if not model:
+        model: str = provider_config.get("default_model")
+        if not model:
+            raise ValueError(f"No default model specified for provider '{provider}'")
+
+    model_params: dict[str, float] = {}
+    if model in provider_config.get("models", {}):
+        model_params = provider_config["models"][model]
+    else:
+        default_model = provider_config.get("default_model")
+        model_params = provider_config["models"][default_model]
+
+    result: dict[str, int|float|Any] = {
+        "model_client": model_client,
+    }
+
+    if provider == "ollama":
+        if "options" in model_params:
+            result["model_kwargs"] = {"model": model, **model_params["options"]}
+        else:
+            result["model_kwargs"] = {"model": model}
+    else:
+        result["model_kwargs"] = {"model": model, **model_params}
+
+    return result
+
 DEFAULT_EXCLUDED_DIRS: List[str] = [
     # Virtual environments and package managers
     "./.venv/", "./venv/", "./env/", "./virtualenv/",
@@ -272,58 +309,3 @@ DEFAULT_EXCLUDED_FILES: List[str] = [
     ".nyc_output", ".tox", "dist", "build", "bld", "out", "bin", "target",
     "packages/*/dist", "packages/*/build", ".output"
 ]
-
-def get_model_config(provider="google", model=None):
-    """
-    Get configuration for the specified provider and model
-
-    Parameters:
-        provider (str): Model provider ('google', 'openai', 'openrouter', 'ollama', 'bedrock')
-        model (str): Model name, or None to use default model
-
-    Returns:
-        dict: Configuration containing model_client, model and other parameters
-    """
-    # Get provider configuration
-    if "providers" not in configs:
-        raise ValueError("Provider configuration not loaded")
-
-    provider_config = configs["providers"].get(provider)
-    if not provider_config:
-        raise ValueError(f"Configuration for provider '{provider}' not found")
-
-    model_client = provider_config.get("model_client")
-    if not model_client:
-        raise ValueError(f"Model client not specified for provider '{provider}'")
-
-    # If model not provided, use default model for the provider
-    if not model:
-        model = provider_config.get("default_model")
-        if not model:
-            raise ValueError(f"No default model specified for provider '{provider}'")
-
-    # Get model parameters (if present)
-    model_params = {}
-    if model in provider_config.get("models", {}):
-        model_params = provider_config["models"][model]
-    else:
-        default_model = provider_config.get("default_model")
-        model_params = provider_config["models"][default_model]
-
-    # Prepare base configuration
-    result = {
-        "model_client": model_client,
-    }
-
-    # Provider-specific adjustments
-    if provider == "ollama":
-        # Ollama uses a slightly different parameter structure
-        if "options" in model_params:
-            result["model_kwargs"] = {"model": model, **model_params["options"]}
-        else:
-            result["model_kwargs"] = {"model": model}
-    else:
-        # Standard structure for other providers
-        result["model_kwargs"] = {"model": model, **model_params}
-
-    return result

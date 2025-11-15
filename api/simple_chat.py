@@ -87,11 +87,10 @@ async def chat_completions_stream(request: ChatCompletionRequest):
         try:
             request_rag: RAG = RAG(provider=request.provider, model=request.model)
 
-            # Extract custom file filter parameters if provided
-            excluded_dirs = None
-            excluded_files = None
-            included_dirs = None
-            included_files = None
+            excluded_dirs: Optional[List[str]] = None
+            excluded_files: Optional[List[str]] = None
+            included_dirs: Optional[List[str]] = None
+            included_files: Optional[List[str]] = None
 
             if request.excluded_dirs:
                 excluded_dirs = [unquote(dir_path) for dir_path in request.excluded_dirs.split('\n') if dir_path.strip()]

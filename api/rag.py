@@ -1,7 +1,7 @@
 import logging
 import weakref
 from dataclasses import dataclass
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Any
 from uuid import uuid4
 
 import adalflow as adal
@@ -185,11 +185,8 @@ class RAG(adal.Component):
 
         self.initialize_db_manager()
 
-        # Set up the output parser
-        data_parser = adal.DataClassParser(data_class=RAGAnswer, return_data_class=True)
-
-        # Format instructions to ensure proper output structure
-        format_instructions = data_parser.get_output_format_str() + """
+        data_parser: adal.DataClassParser = adal.DataClassParser(data_class=RAGAnswer, return_data_class=True)
+        format_instructions: str = data_parser.get_output_format_str() + """
 
 IMPORTANT FORMATTING RULES:
 1. DO NOT include your thinking or reasoning process in the output
@@ -202,12 +199,10 @@ IMPORTANT FORMATTING RULES:
 8. When listing tags or similar items, write them as plain text without escape characters
 9. For pipe characters (|) in text, write them directly without escaping them"""
 
-        # Get model configuration based on provider and model
         from api.config import get_model_config
-        generator_config = get_model_config(self.provider, self.model)
+        generator_config: dict[str, int|float|Any] = get_model_config(self.provider, self.model)
 
-        # Set up the main generator
-        self.generator = adal.Generator(
+        self.generator: adal.Generator = adal.Generator(
             template=RAG_TEMPLATE,
             prompt_kwargs={
                 "output_format_str": format_instructions,
@@ -220,10 +215,8 @@ IMPORTANT FORMATTING RULES:
             output_processors=data_parser,
         )
 
-
-    def initialize_db_manager(self):
-        """Initialize the database manager with local storage"""
-        self.db_manager = DatabaseManager()
+    def initialize_db_manager(self) -> None:
+        self.db_manager: DatabaseManager = DatabaseManager()
         self.transformed_docs = []
 
     def _validate_and_filter_embeddings(self, documents: List) -> List:
@@ -323,20 +316,8 @@ IMPORTANT FORMATTING RULES:
     def prepare_retriever(self, repo_url_or_path: str, type: str = "github", access_token: str = None,
                       excluded_dirs: List[str] = None, excluded_files: List[str] = None,
                       included_dirs: List[str] = None, included_files: List[str] = None):
-        """
-        Prepare the retriever for a repository.
-        Will load database from local storage if available.
-
-        Args:
-            repo_url_or_path: URL or local path to the repository
-            access_token: Optional access token for private repositories
-            excluded_dirs: Optional list of directories to exclude from processing
-            excluded_files: Optional list of file patterns to exclude from processing
-            included_dirs: Optional list of directories to include exclusively
-            included_files: Optional list of file patterns to include exclusively
-        """
         self.initialize_db_manager()
-        self.repo_url_or_path = repo_url_or_path
+        self.repo_url_or_path: str = repo_url_or_path
         self.transformed_docs = self.db_manager.prepare_database(
             repo_url_or_path,
             type,

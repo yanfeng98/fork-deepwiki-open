@@ -1,7 +1,6 @@
 """Module containing all prompts used in the DeepWiki project."""
 
-# System prompt for RAG
-RAG_SYSTEM_PROMPT = r"""
+RAG_SYSTEM_PROMPT: str = r"""
 You are a code assistant which answers user questions on a Github Repo.
 You will receive user query, relevant context, and past conversation history.
 
@@ -27,8 +26,7 @@ IMPORTANT FORMATTING RULES:
 Think step by step and ensure your answer is well-structured and visually organized.
 """
 
-# Template for RAG
-RAG_TEMPLATE = r"""<START_OF_SYS_PROMPT>
+RAG_TEMPLATE: str = r"""<START_OF_SYS_PROMPT>
 {system_prompt}
 {output_format_str}
 <END_OF_SYS_PROMPT>

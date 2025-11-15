@@ -1,5 +1,5 @@
 import adalflow as adal
-from adalflow.core.types import Document, List
+from adalflow.core.types import Document, List, Any
 from adalflow.components.data_process import TextSplitter, ToEmbeddings
 import os
 import subprocess
@@ -21,8 +21,7 @@ from api.tools.embedder import get_embedder
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Maximum token limit for OpenAI embedding models
-MAX_EMBEDDING_TOKENS = 8192
+MAX_EMBEDDING_TOKENS: int = 8192
 
 def count_tokens(text: str, embedder_type: str = None, is_ollama_embedder: bool = None) -> int:
     try:
@@ -46,20 +45,7 @@ def count_tokens(text: str, embedder_type: str = None, is_ollama_embedder: bool 
         return len(text) // 4
 
 def download_repo(repo_url: str, local_path: str, repo_type: str = None, access_token: str = None) -> str:
-    """
-    Downloads a Git repository (GitHub, GitLab, or Bitbucket) to a specified local path.
-
-    Args:
-        repo_type(str): Type of repository
-        repo_url (str): The URL of the Git repository to clone.
-        local_path (str): The local directory where the repository will be cloned.
-        access_token (str, optional): Access token for private repositories.
-
-    Returns:
-        str: The output message from the `git` command.
-    """
     try:
-        # Check if Git is installed
         logger.info(f"Preparing to clone repository to {local_path}")
         subprocess.run(
             ["git", "--version"],
@@ -68,20 +54,15 @@ def download_repo(repo_url: str, local_path: str, repo_type: str = None, access_
             stderr=subprocess.PIPE,
         )
 
-        # Check if repository already exists
         if os.path.exists(local_path) and os.listdir(local_path):
-            # Directory exists and is not empty
             logger.warning(f"Repository already exists at {local_path}. Using existing repository.")
             return f"Using existing repository at {local_path}"
 
-        # Ensure the local path exists
         os.makedirs(local_path, exist_ok=True)
 
-        # Prepare the clone URL with access token if provided
-        clone_url = repo_url
+        clone_url: str = repo_url
         if access_token:
             parsed = urlparse(repo_url)
-            # Determine the repository type and format the URL accordingly
             if repo_type == "github":
                 # Format: https://{token}@{domain}/owner/repo.git
                 # Works for both github.com and enterprise GitHub domains
@@ -95,9 +76,7 @@ def download_repo(repo_url: str, local_path: str, repo_type: str = None, access_
 
             logger.info("Using access token for authentication")
 
-        # Clone the repository
         logger.info(f"Cloning repository from {repo_url} to {local_path}")
-        # We use repo_url in the log to avoid exposing the token in logs
         result = subprocess.run(
             ["git", "clone", "--depth=1", "--single-branch", clone_url, local_path],
             check=True,
@@ -109,8 +88,7 @@ def download_repo(repo_url: str, local_path: str, repo_type: str = None, access_
         return result.stdout.decode("utf-8")
 
     except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.decode('utf-8')
-        # Sanitize error message to remove any tokens
+        error_msg: str = e.stderr.decode('utf-8')
         if access_token and access_token in error_msg:
             error_msg = error_msg.replace(access_token, "***TOKEN***")
         raise ValueError(f"Error during cloning: {error_msg}")
@@ -122,79 +100,49 @@ download_github_repo = download_repo
 
 def read_all_documents(path: str, embedder_type: str = None, is_ollama_embedder: bool = None, 
                       excluded_dirs: List[str] = None, excluded_files: List[str] = None,
-                      included_dirs: List[str] = None, included_files: List[str] = None):
-    """
-    Recursively reads all documents in a directory and its subdirectories.
-
-    Args:
-        path (str): The root directory path.
-        embedder_type (str, optional): The embedder type ('openai', 'google', 'ollama').
-                                     If None, will be determined from configuration.
-        is_ollama_embedder (bool, optional): DEPRECATED. Use embedder_type instead.
-                                           If None, will be determined from configuration.
-        excluded_dirs (List[str], optional): List of directories to exclude from processing.
-            Overrides the default configuration if provided.
-        excluded_files (List[str], optional): List of file patterns to exclude from processing.
-            Overrides the default configuration if provided.
-        included_dirs (List[str], optional): List of directories to include exclusively.
-            When provided, only files in these directories will be processed.
-        included_files (List[str], optional): List of file patterns to include exclusively.
-            When provided, only files matching these patterns will be processed.
-
-    Returns:
-        list: A list of Document objects with metadata.
-    """
-    # Handle backward compatibility
+                      included_dirs: List[str] = None, included_files: List[str] = None) -> List[Document]:
     if embedder_type is None and is_ollama_embedder is not None:
         embedder_type = 'ollama' if is_ollama_embedder else None
-    documents = []
-    # File extensions to look for, prioritizing code files
-    code_extensions = [".py", ".js", ".ts", ".java", ".cpp", ".c", ".h", ".hpp", ".go", ".rs",
-                       ".jsx", ".tsx", ".html", ".css", ".php", ".swift", ".cs"]
-    doc_extensions = [".md", ".txt", ".rst", ".json", ".yaml", ".yml"]
+    documents: List[Document] = []
 
-    # Determine filtering mode: inclusion or exclusion
-    use_inclusion_mode = (included_dirs is not None and len(included_dirs) > 0) or (included_files is not None and len(included_files) > 0)
+    code_extensions: list[str] = [".py", ".js", ".ts", ".java", ".cpp", ".c", ".h", ".hpp", ".go", ".rs",
+                       ".jsx", ".tsx", ".html", ".css", ".php", ".swift", ".cs"]
+    doc_extensions: list[str] = [".md", ".txt", ".rst", ".json", ".yaml", ".yml"]
+
+    use_inclusion_mode: bool = (included_dirs is not None and len(included_dirs) > 0) or (included_files is not None and len(included_files) > 0)
 
     if use_inclusion_mode:
-        # Inclusion mode: only process specified directories and files
-        final_included_dirs = set(included_dirs) if included_dirs else set()
-        final_included_files = set(included_files) if included_files else set()
+        final_included_dirs: set[str] = set(included_dirs) if included_dirs else set()
+        final_included_files: set[str] = set(included_files) if included_files else set()
 
         logger.info(f"Using inclusion mode")
         logger.info(f"Included directories: {list(final_included_dirs)}")
         logger.info(f"Included files: {list(final_included_files)}")
 
-        # Convert to lists for processing
-        included_dirs = list(final_included_dirs)
-        included_files = list(final_included_files)
-        excluded_dirs = []
-        excluded_files = []
+        included_dirs: list[str] = list(final_included_dirs)
+        included_files: list[str] = list(final_included_files)
+        excluded_dirs: list[str] = []
+        excluded_files: list[str] = []
     else:
-        # Exclusion mode: use default exclusions plus any additional ones
-        final_excluded_dirs = set(DEFAULT_EXCLUDED_DIRS)
-        final_excluded_files = set(DEFAULT_EXCLUDED_FILES)
+        final_excluded_dirs: set[str] = set(DEFAULT_EXCLUDED_DIRS)
+        final_excluded_files: set[str] = set(DEFAULT_EXCLUDED_FILES)
 
-        # Add any additional excluded directories from config
         if "file_filters" in configs and "excluded_dirs" in configs["file_filters"]:
             final_excluded_dirs.update(configs["file_filters"]["excluded_dirs"])
 
-        # Add any additional excluded files from config
         if "file_filters" in configs and "excluded_files" in configs["file_filters"]:
             final_excluded_files.update(configs["file_filters"]["excluded_files"])
 
-        # Add any explicitly provided excluded directories and files
         if excluded_dirs is not None:
             final_excluded_dirs.update(excluded_dirs)
 
         if excluded_files is not None:
             final_excluded_files.update(excluded_files)
 
-        # Convert back to lists for compatibility
-        excluded_dirs = list(final_excluded_dirs)
-        excluded_files = list(final_excluded_files)
-        included_dirs = []
-        included_files = []
+        excluded_dirs: list[str] = list(final_excluded_dirs)
+        excluded_files: list[str] = list(final_excluded_files)
+        included_dirs: list[str] = []
+        included_files: list[str] = []
 
         logger.info(f"Using exclusion mode")
         logger.info(f"Excluded directories: {excluded_dirs}")
@@ -204,65 +152,42 @@ def read_all_documents(path: str, embedder_type: str = None, is_ollama_embedder:
 
     def should_process_file(file_path: str, use_inclusion: bool, included_dirs: List[str], included_files: List[str],
                            excluded_dirs: List[str], excluded_files: List[str]) -> bool:
-        """
-        Determine if a file should be processed based on inclusion/exclusion rules.
-
-        Args:
-            file_path (str): The file path to check
-            use_inclusion (bool): Whether to use inclusion mode
-            included_dirs (List[str]): List of directories to include
-            included_files (List[str]): List of files to include
-            excluded_dirs (List[str]): List of directories to exclude
-            excluded_files (List[str]): List of files to exclude
-
-        Returns:
-            bool: True if the file should be processed, False otherwise
-        """
-        file_path_parts = os.path.normpath(file_path).split(os.sep)
-        file_name = os.path.basename(file_path)
+        file_path_parts: list[str] = os.path.normpath(file_path).split(os.sep)
+        file_name: str = os.path.basename(file_path)
 
         if use_inclusion:
-            # Inclusion mode: file must be in included directories or match included files
-            is_included = False
+            is_included: bool = False
 
-            # Check if file is in an included directory
             if included_dirs:
                 for included in included_dirs:
-                    clean_included = included.strip("./").rstrip("/")
+                    clean_included: str = included.strip("./").rstrip("/")
                     if clean_included in file_path_parts:
                         is_included = True
                         break
 
-            # Check if file matches included file patterns
             if not is_included and included_files:
                 for included_file in included_files:
                     if file_name == included_file or file_name.endswith(included_file):
                         is_included = True
                         break
 
-            # If no inclusion rules are specified for a category, allow all files from that category
             if not included_dirs and not included_files:
                 is_included = True
             elif not included_dirs and included_files:
-                # Only file patterns specified, allow all directories
-                pass  # is_included is already set based on file patterns
+                pass
             elif included_dirs and not included_files:
-                # Only directory patterns specified, allow all files in included directories
-                pass  # is_included is already set based on directory patterns
+                pass
 
             return is_included
         else:
-            # Exclusion mode: file must not be in excluded directories or match excluded files
-            is_excluded = False
+            is_excluded: bool = False
 
-            # Check if file is in an excluded directory
             for excluded in excluded_dirs:
-                clean_excluded = excluded.strip("./").rstrip("/")
+                clean_excluded: str = excluded.strip("./").rstrip("/")
                 if clean_excluded in file_path_parts:
                     is_excluded = True
                     break
 
-            # Check if file matches excluded file patterns
             if not is_excluded:
                 for excluded_file in excluded_files:
                     if file_name == excluded_file:
@@ -271,33 +196,29 @@ def read_all_documents(path: str, embedder_type: str = None, is_ollama_embedder:
 
             return not is_excluded
 
-    # Process code files first
     for ext in code_extensions:
-        files = glob.glob(f"{path}/**/*{ext}", recursive=True)
+        files: list[str] = glob.glob(f"{path}/**/*{ext}", recursive=True)
         for file_path in files:
-            # Check if file should be processed based on inclusion/exclusion rules
             if not should_process_file(file_path, use_inclusion_mode, included_dirs, included_files, excluded_dirs, excluded_files):
                 continue
 
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                    relative_path = os.path.relpath(file_path, path)
+                    content: str = f.read()
+                    relative_path: str = os.path.relpath(file_path, path)
 
-                    # Determine if this is an implementation file
-                    is_implementation = (
+                    is_implementation: bool = (
                         not relative_path.startswith("test_")
                         and not relative_path.startswith("app_")
                         and "test" not in relative_path.lower()
                     )
 
-                    # Check token count
-                    token_count = count_tokens(content, embedder_type)
+                    token_count: int = count_tokens(content, embedder_type)
                     if token_count > MAX_EMBEDDING_TOKENS * 10:
                         logger.warning(f"Skipping large file {relative_path}: Token count ({token_count}) exceeds limit")
                         continue
 
-                    doc = Document(
+                    doc: Document = Document(
                         text=content,
                         meta_data={
                             "file_path": relative_path,
@@ -312,26 +233,23 @@ def read_all_documents(path: str, embedder_type: str = None, is_ollama_embedder:
             except Exception as e:
                 logger.error(f"Error reading {file_path}: {e}")
 
-    # Then process documentation files
     for ext in doc_extensions:
-        files = glob.glob(f"{path}/**/*{ext}", recursive=True)
+        files: list[str] = glob.glob(f"{path}/**/*{ext}", recursive=True)
         for file_path in files:
-            # Check if file should be processed based on inclusion/exclusion rules
             if not should_process_file(file_path, use_inclusion_mode, included_dirs, included_files, excluded_dirs, excluded_files):
                 continue
 
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                    relative_path = os.path.relpath(file_path, path)
+                    content: str = f.read()
+                    relative_path: str = os.path.relpath(file_path, path)
 
-                    # Check token count
-                    token_count = count_tokens(content, embedder_type)
+                    token_count: int = count_tokens(content, embedder_type)
                     if token_count > MAX_EMBEDDING_TOKENS:
                         logger.warning(f"Skipping large file {relative_path}: Token count ({token_count}) exceeds limit")
                         continue
 
-                    doc = Document(
+                    doc: Document = Document(
                         text=content,
                         meta_data={
                             "file_path": relative_path,
@@ -349,75 +267,47 @@ def read_all_documents(path: str, embedder_type: str = None, is_ollama_embedder:
     logger.info(f"Found {len(documents)} documents")
     return documents
 
-def prepare_data_pipeline(embedder_type: str = None, is_ollama_embedder: bool = None):
-    """
-    Creates and returns the data transformation pipeline.
-
-    Args:
-        embedder_type (str, optional): The embedder type ('openai', 'google', 'ollama').
-                                     If None, will be determined from configuration.
-        is_ollama_embedder (bool, optional): DEPRECATED. Use embedder_type instead.
-                                           If None, will be determined from configuration.
-
-    Returns:
-        adal.Sequential: The data transformation pipeline
-    """
-    from api.config import get_embedder_config, get_embedder_type
-
-    # Handle backward compatibility
-    if embedder_type is None and is_ollama_embedder is not None:
-        embedder_type = 'ollama' if is_ollama_embedder else None
-    
-    # Determine embedder type if not specified
-    if embedder_type is None:
-        embedder_type = get_embedder_type()
-
-    splitter = TextSplitter(**configs["text_splitter"])
-    embedder_config = get_embedder_config()
-
-    embedder = get_embedder(embedder_type=embedder_type)
-
-    # Choose appropriate processor based on embedder type
-    if embedder_type == 'ollama':
-        # Use Ollama document processor for single-document processing
-        embedder_transformer = OllamaDocumentProcessor(embedder=embedder)
-    else:
-        # Use batch processing for OpenAI and Google embedders
-        batch_size = embedder_config.get("batch_size", 500)
-        embedder_transformer = ToEmbeddings(
-            embedder=embedder, batch_size=batch_size
-        )
-
-    data_transformer = adal.Sequential(
-        splitter, embedder_transformer
-    )  # sequential will chain together splitter and embedder
-    return data_transformer
-
 def transform_documents_and_save_to_db(
     documents: List[Document], db_path: str, embedder_type: str = None, is_ollama_embedder: bool = None
 ) -> LocalDB:
-    """
-    Transforms a list of documents and saves them to a local database.
+    data_transformer: adal.Sequential = prepare_data_pipeline(embedder_type, is_ollama_embedder)
 
-    Args:
-        documents (list): A list of `Document` objects.
-        db_path (str): The path to the local database file.
-        embedder_type (str, optional): The embedder type ('openai', 'google', 'ollama').
-                                     If None, will be determined from configuration.
-        is_ollama_embedder (bool, optional): DEPRECATED. Use embedder_type instead.
-                                           If None, will be determined from configuration.
-    """
-    # Get the data transformer
-    data_transformer = prepare_data_pipeline(embedder_type, is_ollama_embedder)
-
-    # Save the documents to a local database
-    db = LocalDB()
+    db: LocalDB = LocalDB()
     db.register_transformer(transformer=data_transformer, key="split_and_embed")
     db.load(documents)
     db.transform(key="split_and_embed")
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     db.save_state(filepath=db_path)
     return db
+
+def prepare_data_pipeline(embedder_type: str = None, is_ollama_embedder: bool = None) -> adal.Sequential:
+    from api.config import get_embedder_config, get_embedder_type
+
+    if embedder_type is None and is_ollama_embedder is not None:
+        embedder_type = 'ollama' if is_ollama_embedder else None
+    
+    if embedder_type is None:
+        embedder_type = get_embedder_type()
+
+    splitter: TextSplitter = TextSplitter(**configs["text_splitter"])
+    embedder_config: dict[str, Any] = get_embedder_config()
+
+    embedder: adal.Embedder = get_embedder(embedder_type=embedder_type)
+
+    # Choose appropriate processor based on embedder type
+    if embedder_type == 'ollama':
+        # Use Ollama document processor for single-document processing
+        embedder_transformer = OllamaDocumentProcessor(embedder=embedder)
+    else:
+        batch_size: int = embedder_config.get("batch_size", 500)
+        embedder_transformer: ToEmbeddings = ToEmbeddings(
+            embedder=embedder, batch_size=batch_size
+        )
+
+    data_transformer: adal.Sequential = adal.Sequential(
+        splitter, embedder_transformer
+    )
+    return data_transformer
 
 def get_github_file_content(repo_url: str, file_path: str, access_token: str = None) -> str:
     """
@@ -680,9 +570,6 @@ def get_file_content(repo_url: str, file_path: str, repo_type: str = None, acces
         raise ValueError("Unsupported repository type. Only GitHub, GitLab, and Bitbucket are supported.")
 
 class DatabaseManager:
-    """
-    Manages the creation, loading, transformation, and persistence of LocalDB instances.
-    """
 
     def __init__(self):
         self.db = None
@@ -693,26 +580,6 @@ class DatabaseManager:
                          embedder_type: str = None, is_ollama_embedder: bool = None,
                          excluded_dirs: List[str] = None, excluded_files: List[str] = None,
                          included_dirs: List[str] = None, included_files: List[str] = None) -> List[Document]:
-        """
-        Create a new database from the repository.
-
-        Args:
-            repo_type(str): Type of repository
-            repo_url_or_path (str): The URL or local path of the repository
-            access_token (str, optional): Access token for private repositories
-            embedder_type (str, optional): Embedder type to use ('openai', 'google', 'ollama').
-                                         If None, will be determined from configuration.
-            is_ollama_embedder (bool, optional): DEPRECATED. Use embedder_type instead.
-                                               If None, will be determined from configuration.
-            excluded_dirs (List[str], optional): List of directories to exclude from processing
-            excluded_files (List[str], optional): List of file patterns to exclude from processing
-            included_dirs (List[str], optional): List of directories to include exclusively
-            included_files (List[str], optional): List of file patterns to include exclusively
-
-        Returns:
-            List[Document]: List of Document objects
-        """
-        # Handle backward compatibility
         if embedder_type is None and is_ollama_embedder is not None:
             embedder_type = 'ollama' if is_ollama_embedder else None
         
@@ -721,118 +588,79 @@ class DatabaseManager:
         return self.prepare_db_index(embedder_type=embedder_type, excluded_dirs=excluded_dirs, excluded_files=excluded_files,
                                    included_dirs=included_dirs, included_files=included_files)
 
-    def reset_database(self):
-        """
-        Reset the database to its initial state.
-        """
-        self.db = None
-        self.repo_url_or_path = None
-        self.repo_paths = None
-
-    def _extract_repo_name_from_url(self, repo_url_or_path: str, repo_type: str) -> str:
-        # Extract owner and repo name to create unique identifier
-        url_parts = repo_url_or_path.rstrip('/').split('/')
-
-        if repo_type in ["github", "gitlab", "bitbucket"] and len(url_parts) >= 5:
-            # GitHub URL format: https://github.com/owner/repo
-            # GitLab URL format: https://gitlab.com/owner/repo or https://gitlab.com/group/subgroup/repo
-            # Bitbucket URL format: https://bitbucket.org/owner/repo
-            owner = url_parts[-2]
-            repo = url_parts[-1].replace(".git", "")
-            repo_name = f"{owner}_{repo}"
-        else:
-            repo_name = url_parts[-1].replace(".git", "")
-        return repo_name
+    def reset_database(self) -> None:
+        self.db: LocalDB = None
+        self.repo_url_or_path: str = None
+        self.repo_paths: List[str] = None
 
     def _create_repo(self, repo_url_or_path: str, repo_type: str = None, access_token: str = None) -> None:
-        """
-        Download and prepare all paths.
-        Paths:
-        ~/.adalflow/repos/{owner}_{repo_name} (for url, local path will be the same)
-        ~/.adalflow/databases/{owner}_{repo_name}.pkl
-
-        Args:
-            repo_type(str): Type of repository
-            repo_url_or_path (str): The URL or local path of the repository
-            access_token (str, optional): Access token for private repositories
-        """
         logger.info(f"Preparing repo storage for {repo_url_or_path}...")
 
         try:
-            root_path = get_adalflow_default_root_path()
-
+            root_path: str = get_adalflow_default_root_path()
             os.makedirs(root_path, exist_ok=True)
-            # url
+            
             if repo_url_or_path.startswith("https://") or repo_url_or_path.startswith("http://"):
-                # Extract the repository name from the URL
-                repo_name = self._extract_repo_name_from_url(repo_url_or_path, repo_type)
+                repo_name: str = self._extract_repo_name_from_url(repo_url_or_path, repo_type)
                 logger.info(f"Extracted repo name: {repo_name}")
 
-                save_repo_dir = os.path.join(root_path, "repos", repo_name)
-
-                # Check if the repository directory already exists and is not empty
+                save_repo_dir: str = os.path.join(root_path, "repos", repo_name)
                 if not (os.path.exists(save_repo_dir) and os.listdir(save_repo_dir)):
-                    # Only download if the repository doesn't exist or is empty
                     download_repo(repo_url_or_path, save_repo_dir, repo_type, access_token)
                 else:
                     logger.info(f"Repository already exists at {save_repo_dir}. Using existing repository.")
-            else:  # local path
-                repo_name = os.path.basename(repo_url_or_path)
-                save_repo_dir = repo_url_or_path
+            else:
+                repo_name: str = os.path.basename(repo_url_or_path)
+                save_repo_dir: str = repo_url_or_path
 
-            save_db_file = os.path.join(root_path, "databases", f"{repo_name}.pkl")
+            save_db_file: str = os.path.join(root_path, "databases", f"{repo_name}.pkl")
             os.makedirs(save_repo_dir, exist_ok=True)
             os.makedirs(os.path.dirname(save_db_file), exist_ok=True)
 
-            self.repo_paths = {
+            self.repo_paths: dict[str, str] = {
                 "save_repo_dir": save_repo_dir,
                 "save_db_file": save_db_file,
             }
-            self.repo_url_or_path = repo_url_or_path
+            self.repo_url_or_path: str = repo_url_or_path
             logger.info(f"Repo paths: {self.repo_paths}")
 
         except Exception as e:
             logger.error(f"Failed to create repository structure: {e}")
             raise
 
+    def _extract_repo_name_from_url(self, repo_url_or_path: str, repo_type: str) -> str:
+        url_parts: List[str] = repo_url_or_path.rstrip('/').split('/')
+
+        if repo_type in ["github", "gitlab", "bitbucket"] and len(url_parts) >= 5:
+            # GitHub URL format: https://github.com/owner/repo
+            # GitLab URL format: https://gitlab.com/owner/repo or https://gitlab.com/group/subgroup/repo
+            # Bitbucket URL format: https://bitbucket.org/owner/repo
+            owner: str = url_parts[-2]
+            repo: str = url_parts[-1].replace(".git", "")
+            repo_name: str = f"{owner}_{repo}"
+        else:
+            repo_name: str = url_parts[-1].replace(".git", "")
+        return repo_name
+
     def prepare_db_index(self, embedder_type: str = None, is_ollama_embedder: bool = None, 
                         excluded_dirs: List[str] = None, excluded_files: List[str] = None,
                         included_dirs: List[str] = None, included_files: List[str] = None) -> List[Document]:
-        """
-        Prepare the indexed database for the repository.
-
-        Args:
-            embedder_type (str, optional): Embedder type to use ('openai', 'google', 'ollama').
-                                         If None, will be determined from configuration.
-            is_ollama_embedder (bool, optional): DEPRECATED. Use embedder_type instead.
-                                               If None, will be determined from configuration.
-            excluded_dirs (List[str], optional): List of directories to exclude from processing
-            excluded_files (List[str], optional): List of file patterns to exclude from processing
-            included_dirs (List[str], optional): List of directories to include exclusively
-            included_files (List[str], optional): List of file patterns to include exclusively
-
-        Returns:
-            List[Document]: List of Document objects
-        """
-        # Handle backward compatibility
         if embedder_type is None and is_ollama_embedder is not None:
             embedder_type = 'ollama' if is_ollama_embedder else None
-        # check the database
+        
         if self.repo_paths and os.path.exists(self.repo_paths["save_db_file"]):
             logger.info("Loading existing database...")
             try:
                 self.db = LocalDB.load_state(self.repo_paths["save_db_file"])
-                documents = self.db.get_transformed_data(key="split_and_embed")
+                documents: List[Document] = self.db.get_transformed_data(key="split_and_embed")
                 if documents:
                     logger.info(f"Loaded {len(documents)} documents from existing database")
                     return documents
             except Exception as e:
                 logger.error(f"Error loading existing database: {e}")
-                # Continue to create a new database
 
-        # prepare the database
         logger.info("Creating new database...")
-        documents = read_all_documents(
+        documents: List[Document] = read_all_documents(
             self.repo_paths["save_repo_dir"],
             embedder_type=embedder_type,
             excluded_dirs=excluded_dirs,
