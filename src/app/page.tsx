@@ -13,7 +13,6 @@ import { useProcessedProjects } from '@/hooks/useProcessedProjects';
 
 import { useLanguage } from '@/contexts/LanguageContext';
 
-// Define the demo mermaid charts outside the component
 const DEMO_FLOW_CHART = `graph TD
   A[Code Repository] --> B[DeepWiki]
   B --> C[Architecture Diagrams]
