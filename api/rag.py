@@ -5,11 +5,11 @@ from typing import List, Tuple, Dict, Any
 from uuid import uuid4
 
 import adalflow as adal
+from adalflow.core.types import Document
 
 from api.tools.embedder import get_embedder
 from api.prompts import RAG_SYSTEM_PROMPT as system_prompt, RAG_TEMPLATE
 
-# Create our own implementation of the conversation classes
 @dataclass
 class UserQuery:
     query_str: str
@@ -27,9 +27,9 @@ class DialogTurn:
 class CustomConversation:
 
     def __init__(self):
-        self.dialog_turns = []
+        self.dialog_turns: List[DialogTurn] = []
 
-    def append_dialog_turn(self, dialog_turn):
+    def append_dialog_turn(self, dialog_turn: DialogTurn):
         if not hasattr(self, 'dialog_turns'):
             self.dialog_turns = []
         self.dialog_turns.append(dialog_turn)
@@ -50,6 +50,42 @@ class Memory(adal.core.component.DataComponent):
     def __init__(self):
         super().__init__()
         self.current_conversation: CustomConversation = CustomConversation()
+
+    def add_dialog_turn(self, user_query: str, assistant_response: str) -> bool:
+        try:
+            dialog_turn: DialogTurn = DialogTurn(
+                id=str(uuid4()),
+                user_query=UserQuery(query_str=user_query),
+                assistant_response=AssistantResponse(response_str=assistant_response),
+            )
+
+            if not hasattr(self.current_conversation, 'append_dialog_turn'):
+                logger.warning("current_conversation does not have append_dialog_turn method, creating new one")
+                self.current_conversation = CustomConversation()
+
+            if not hasattr(self.current_conversation, 'dialog_turns'):
+                logger.warning("dialog_turns not found, initializing empty list")
+                self.current_conversation.dialog_turns = []
+
+            self.current_conversation.dialog_turns.append(dialog_turn)
+            logger.info(f"Successfully added dialog turn, now have {len(self.current_conversation.dialog_turns)} turns")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error adding dialog turn: {str(e)}")
+            try:
+                self.current_conversation = CustomConversation()
+                dialog_turn = DialogTurn(
+                    id=str(uuid4()),
+                    user_query=UserQuery(query_str=user_query),
+                    assistant_response=AssistantResponse(response_str=assistant_response),
+                )
+                self.current_conversation.dialog_turns.append(dialog_turn)
+                logger.info("Recovered from error by creating new conversation")
+                return True
+            except Exception as e2:
+                logger.error(f"Failed to recover from error: {str(e2)}")
+                return False
 
     def call(self) -> Dict:
         """Return the conversation history as a dictionary."""
@@ -82,59 +118,6 @@ class Memory(adal.core.component.DataComponent):
 
         logger.info(f"Returning {len(all_dialog_turns)} dialog turns from memory")
         return all_dialog_turns
-
-    def add_dialog_turn(self, user_query: str, assistant_response: str) -> bool:
-        """
-        Add a dialog turn to the conversation history.
-
-        Args:
-            user_query: The user's query
-            assistant_response: The assistant's response
-
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            # Create a new dialog turn using our custom implementation
-            dialog_turn = DialogTurn(
-                id=str(uuid4()),
-                user_query=UserQuery(query_str=user_query),
-                assistant_response=AssistantResponse(response_str=assistant_response),
-            )
-
-            # Make sure the current_conversation has the append_dialog_turn method
-            if not hasattr(self.current_conversation, 'append_dialog_turn'):
-                logger.warning("current_conversation does not have append_dialog_turn method, creating new one")
-                # Initialize a new conversation if needed
-                self.current_conversation = CustomConversation()
-
-            # Ensure dialog_turns exists
-            if not hasattr(self.current_conversation, 'dialog_turns'):
-                logger.warning("dialog_turns not found, initializing empty list")
-                self.current_conversation.dialog_turns = []
-
-            # Safely append the dialog turn
-            self.current_conversation.dialog_turns.append(dialog_turn)
-            logger.info(f"Successfully added dialog turn, now have {len(self.current_conversation.dialog_turns)} turns")
-            return True
-
-        except Exception as e:
-            logger.error(f"Error adding dialog turn: {str(e)}")
-            # Try to recover by creating a new conversation
-            try:
-                self.current_conversation = CustomConversation()
-                dialog_turn = DialogTurn(
-                    id=str(uuid4()),
-                    user_query=UserQuery(query_str=user_query),
-                    assistant_response=AssistantResponse(response_str=assistant_response),
-                )
-                self.current_conversation.dialog_turns.append(dialog_turn)
-                logger.info("Recovered from error by creating new conversation")
-                return True
-            except Exception as e2:
-                logger.error(f"Failed to recover from error: {str(e2)}")
-                return False
-
 
 from dataclasses import dataclass, field
 
@@ -217,101 +200,7 @@ IMPORTANT FORMATTING RULES:
 
     def initialize_db_manager(self) -> None:
         self.db_manager: DatabaseManager = DatabaseManager()
-        self.transformed_docs = []
-
-    def _validate_and_filter_embeddings(self, documents: List) -> List:
-        """
-        Validate embeddings and filter out documents with invalid or mismatched embedding sizes.
-
-        Args:
-            documents: List of documents with embeddings
-
-        Returns:
-            List of documents with valid embeddings of consistent size
-        """
-        if not documents:
-            logger.warning("No documents provided for embedding validation")
-            return []
-
-        valid_documents = []
-        embedding_sizes = {}
-
-        # First pass: collect all embedding sizes and count occurrences
-        for i, doc in enumerate(documents):
-            if not hasattr(doc, 'vector') or doc.vector is None:
-                logger.warning(f"Document {i} has no embedding vector, skipping")
-                continue
-
-            try:
-                if isinstance(doc.vector, list):
-                    embedding_size = len(doc.vector)
-                elif hasattr(doc.vector, 'shape'):
-                    embedding_size = doc.vector.shape[0] if len(doc.vector.shape) == 1 else doc.vector.shape[-1]
-                elif hasattr(doc.vector, '__len__'):
-                    embedding_size = len(doc.vector)
-                else:
-                    logger.warning(f"Document {i} has invalid embedding vector type: {type(doc.vector)}, skipping")
-                    continue
-
-                if embedding_size == 0:
-                    logger.warning(f"Document {i} has empty embedding vector, skipping")
-                    continue
-
-                embedding_sizes[embedding_size] = embedding_sizes.get(embedding_size, 0) + 1
-
-            except Exception as e:
-                logger.warning(f"Error checking embedding size for document {i}: {str(e)}, skipping")
-                continue
-
-        if not embedding_sizes:
-            logger.error("No valid embeddings found in any documents")
-            return []
-
-        # Find the most common embedding size (this should be the correct one)
-        target_size = max(embedding_sizes.keys(), key=lambda k: embedding_sizes[k])
-        logger.info(f"Target embedding size: {target_size} (found in {embedding_sizes[target_size]} documents)")
-
-        # Log all embedding sizes found
-        for size, count in embedding_sizes.items():
-            if size != target_size:
-                logger.warning(f"Found {count} documents with incorrect embedding size {size}, will be filtered out")
-
-        # Second pass: filter documents with the target embedding size
-        for i, doc in enumerate(documents):
-            if not hasattr(doc, 'vector') or doc.vector is None:
-                continue
-
-            try:
-                if isinstance(doc.vector, list):
-                    embedding_size = len(doc.vector)
-                elif hasattr(doc.vector, 'shape'):
-                    embedding_size = doc.vector.shape[0] if len(doc.vector.shape) == 1 else doc.vector.shape[-1]
-                elif hasattr(doc.vector, '__len__'):
-                    embedding_size = len(doc.vector)
-                else:
-                    continue
-
-                if embedding_size == target_size:
-                    valid_documents.append(doc)
-                else:
-                    # Log which document is being filtered out
-                    file_path = getattr(doc, 'meta_data', {}).get('file_path', f'document_{i}')
-                    logger.warning(f"Filtering out document '{file_path}' due to embedding size mismatch: {embedding_size} != {target_size}")
-
-            except Exception as e:
-                file_path = getattr(doc, 'meta_data', {}).get('file_path', f'document_{i}')
-                logger.warning(f"Error validating embedding for document '{file_path}': {str(e)}, skipping")
-                continue
-
-        logger.info(f"Embedding validation complete: {len(valid_documents)}/{len(documents)} documents have valid embeddings")
-
-        if len(valid_documents) == 0:
-            logger.error("No documents with valid embeddings remain after filtering")
-        elif len(valid_documents) < len(documents):
-            filtered_count = len(documents) - len(valid_documents)
-            logger.warning(f"Filtered out {filtered_count} documents due to embedding issues")
-
-        return valid_documents
+        self.transformed_docs: List[Document] = []
 
     def prepare_retriever(self, repo_url_or_path: str, type: str = "github", access_token: str = None,
                       excluded_dirs: List[str] = None, excluded_files: List[str] = None,
@@ -330,7 +219,6 @@ IMPORTANT FORMATTING RULES:
         )
         logger.info(f"Loaded {len(self.transformed_docs)} documents for retrieval")
 
-        # Validate and filter embeddings to ensure consistent sizes
         self.transformed_docs = self._validate_and_filter_embeddings(self.transformed_docs)
 
         if not self.transformed_docs:
@@ -339,9 +227,8 @@ IMPORTANT FORMATTING RULES:
         logger.info(f"Using {len(self.transformed_docs)} documents with valid embeddings for retrieval")
 
         try:
-            # Use the appropriate embedder for retrieval
             retrieve_embedder = self.query_embedder if self.is_ollama_embedder else self.embedder
-            self.retriever = FAISSRetriever(
+            self.retriever: FAISSRetriever = FAISSRetriever(
                 **configs["retriever"],
                 embedder=retrieve_embedder,
                 documents=self.transformed_docs,
@@ -350,42 +237,109 @@ IMPORTANT FORMATTING RULES:
             logger.info("FAISS retriever created successfully")
         except Exception as e:
             logger.error(f"Error creating FAISS retriever: {str(e)}")
-            # Try to provide more specific error information
             if "All embeddings should be of the same size" in str(e):
                 logger.error("Embedding size validation failed. This suggests there are still inconsistent embedding sizes.")
-                # Log embedding sizes for debugging
-                sizes = []
-                for i, doc in enumerate(self.transformed_docs[:10]):  # Check first 10 docs
+                sizes: List[str] = []
+                for i, doc in enumerate(self.transformed_docs[:10]):
                     if hasattr(doc, 'vector') and doc.vector is not None:
                         try:
                             if isinstance(doc.vector, list):
-                                size = len(doc.vector)
+                                size: int = len(doc.vector)
                             elif hasattr(doc.vector, 'shape'):
-                                size = doc.vector.shape[0] if len(doc.vector.shape) == 1 else doc.vector.shape[-1]
+                                size: int = doc.vector.shape[0] if len(doc.vector.shape) == 1 else doc.vector.shape[-1]
                             elif hasattr(doc.vector, '__len__'):
-                                size = len(doc.vector)
+                                size: int = len(doc.vector)
                             else:
-                                size = "unknown"
+                                size: str = "unknown"
                             sizes.append(f"doc_{i}: {size}")
                         except:
                             sizes.append(f"doc_{i}: error")
                 logger.error(f"Sample embedding sizes: {', '.join(sizes)}")
             raise
 
+    def _validate_and_filter_embeddings(self, documents: List[Document]) -> List[Document]:
+        if not documents:
+            logger.warning("No documents provided for embedding validation")
+            return []
+
+        valid_documents: List[Document] = []
+        embedding_sizes: dict[int, int] = {}
+
+        for i, doc in enumerate(documents):
+            if not hasattr(doc, 'vector') or doc.vector is None:
+                logger.warning(f"Document {i} has no embedding vector, skipping")
+                continue
+
+            try:
+                if isinstance(doc.vector, list):
+                    embedding_size: int = len(doc.vector)
+                elif hasattr(doc.vector, 'shape'):
+                    embedding_size: int = doc.vector.shape[0] if len(doc.vector.shape) == 1 else doc.vector.shape[-1]
+                elif hasattr(doc.vector, '__len__'):
+                    embedding_size: int = len(doc.vector)
+                else:
+                    logger.warning(f"Document {i} has invalid embedding vector type: {type(doc.vector)}, skipping")
+                    continue
+
+                if embedding_size == 0:
+                    logger.warning(f"Document {i} has empty embedding vector, skipping")
+                    continue
+
+                embedding_sizes[embedding_size] = embedding_sizes.get(embedding_size, 0) + 1
+
+            except Exception as e:
+                logger.warning(f"Error checking embedding size for document {i}: {str(e)}, skipping")
+                continue
+
+        if not embedding_sizes:
+            logger.error("No valid embeddings found in any documents")
+            return []
+
+        target_size: int = max(embedding_sizes.keys(), key=lambda k: embedding_sizes[k])
+        logger.info(f"Target embedding size: {target_size} (found in {embedding_sizes[target_size]} documents)")
+
+        for size, count in embedding_sizes.items():
+            if size != target_size:
+                logger.warning(f"Found {count} documents with incorrect embedding size {size}, will be filtered out")
+
+        for i, doc in enumerate(documents):
+            if not hasattr(doc, 'vector') or doc.vector is None:
+                continue
+
+            try:
+                if isinstance(doc.vector, list):
+                    embedding_size: int = len(doc.vector)
+                elif hasattr(doc.vector, 'shape'):
+                    embedding_size: int = doc.vector.shape[0] if len(doc.vector.shape) == 1 else doc.vector.shape[-1]
+                elif hasattr(doc.vector, '__len__'):
+                    embedding_size: int = len(doc.vector)
+                else:
+                    continue
+
+                if embedding_size == target_size:
+                    valid_documents.append(doc)
+                else:
+                    file_path: str = getattr(doc, 'meta_data', {}).get('file_path', f'document_{i}')
+                    logger.warning(f"Filtering out document '{file_path}' due to embedding size mismatch: {embedding_size} != {target_size}")
+
+            except Exception as e:
+                file_path: str = getattr(doc, 'meta_data', {}).get('file_path', f'document_{i}')
+                logger.warning(f"Error validating embedding for document '{file_path}': {str(e)}, skipping")
+                continue
+
+        logger.info(f"Embedding validation complete: {len(valid_documents)}/{len(documents)} documents have valid embeddings")
+
+        if len(valid_documents) == 0:
+            logger.error("No documents with valid embeddings remain after filtering")
+        elif len(valid_documents) < len(documents):
+            filtered_count: int = len(documents) - len(valid_documents)
+            logger.warning(f"Filtered out {filtered_count} documents due to embedding issues")
+
+        return valid_documents
+
     def call(self, query: str, language: str = "en") -> Tuple[List]:
-        """
-        Process a query using RAG.
-
-        Args:
-            query: The user's query
-
-        Returns:
-            Tuple of (RAGAnswer, retrieved_documents)
-        """
         try:
             retrieved_documents = self.retriever(query)
-
-            # Fill in the documents
             retrieved_documents[0].documents = [
                 self.transformed_docs[doc_index]
                 for doc_index in retrieved_documents[0].doc_indices
@@ -396,7 +350,6 @@ IMPORTANT FORMATTING RULES:
         except Exception as e:
             logger.error(f"Error in RAG call: {str(e)}")
 
-            # Create error response
             error_response = RAGAnswer(
                 rationale="Error occurred while processing the query.",
                 answer=f"I apologize, but I encountered an error while processing your question. Please try again or rephrase your question."

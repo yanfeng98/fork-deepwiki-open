@@ -1,11 +1,11 @@
 import logging
 import os
-from typing import List, Optional
+from typing import List, Any, Optional
 from urllib.parse import unquote
 
 import google.generativeai as genai
 from adalflow.components.model_client.ollama_client import OllamaClient
-from adalflow.core.types import ModelType
+from adalflow.core.types import ModelType, Document
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -116,25 +116,22 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                 raise HTTPException(status_code=500, detail=f"Error preparing retriever: {str(e)}")
         except Exception as e:
             logger.error(f"Error preparing retriever: {str(e)}")
-            # Check for specific embedding-related errors
             if "All embeddings should be of the same size" in str(e):
                 raise HTTPException(status_code=500, detail="Inconsistent embedding sizes detected. Some documents may have failed to embed properly. Please try again.")
             else:
                 raise HTTPException(status_code=500, detail=f"Error preparing retriever: {str(e)}")
 
-        # Validate request
         if not request.messages or len(request.messages) == 0:
             raise HTTPException(status_code=400, detail="No messages provided")
 
-        last_message = request.messages[-1]
+        last_message: ChatMessage = request.messages[-1]
         if last_message.role != "user":
             raise HTTPException(status_code=400, detail="Last message must be from the user")
 
-        # Process previous messages to build conversation history
         for i in range(0, len(request.messages) - 1, 2):
             if i + 1 < len(request.messages):
-                user_msg = request.messages[i]
-                assistant_msg = request.messages[i + 1]
+                user_msg: ChatMessage = request.messages[i]
+                assistant_msg: ChatMessage = request.messages[i + 1]
 
                 if user_msg.role == "user" and assistant_msg.role == "assistant":
                     request_rag.memory.add_dialog_turn(
@@ -142,28 +139,21 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                         assistant_response=assistant_msg.content
                     )
 
-        # Check if this is a Deep Research request
-        is_deep_research = False
-        research_iteration = 1
+        is_deep_research: bool = False
+        research_iteration: int = 1
 
-        # Process messages to detect Deep Research requests
         for msg in request.messages:
             if hasattr(msg, 'content') and msg.content and "[DEEP RESEARCH]" in msg.content:
                 is_deep_research = True
-                # Only remove the tag from the last message
                 if msg == request.messages[-1]:
-                    # Remove the Deep Research tag
                     msg.content = msg.content.replace("[DEEP RESEARCH]", "").strip()
 
-        # Count research iterations if this is a Deep Research request
         if is_deep_research:
             research_iteration = sum(1 for msg in request.messages if msg.role == 'assistant') + 1
             logger.info(f"Deep Research request detected - iteration {research_iteration}")
 
-            # Check if this is a continuation request
             if "continue" in last_message.content.lower() and "research" in last_message.content.lower():
-                # Find the original topic from the first user message
-                original_topic = None
+                original_topic: Optional[str] = None
                 for msg in request.messages:
                     if msg.role == "user" and "continue" not in msg.content.lower():
                         original_topic = msg.content.replace("[DEEP RESEARCH]", "").strip()
@@ -171,95 +161,72 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                         break
 
                 if original_topic:
-                    # Replace the continuation message with the original topic
                     last_message.content = original_topic
                     logger.info(f"Using original topic for research: {original_topic}")
 
-        # Get the query from the last message
-        query = last_message.content
-
-        # Only retrieve documents if input is not too large
-        context_text = ""
+        query: str = last_message.content
+        context_text: str = ""
         retrieved_documents = None
 
         if not input_too_large:
             try:
-                # If filePath exists, modify the query for RAG to focus on the file
-                rag_query = query
+                rag_query: str = query
                 if request.filePath:
-                    # Use the file path to get relevant context about the file
                     rag_query = f"Contexts related to {request.filePath}"
                     logger.info(f"Modified RAG query to focus on file: {request.filePath}")
 
-                # Try to perform RAG retrieval
                 try:
-                    # This will use the actual RAG implementation
                     retrieved_documents = request_rag(rag_query, language=request.language)
 
                     if retrieved_documents and retrieved_documents[0].documents:
-                        # Format context for the prompt in a more structured way
-                        documents = retrieved_documents[0].documents
+                        documents: List[Document] = retrieved_documents[0].documents
                         logger.info(f"Retrieved {len(documents)} documents")
 
-                        # Group documents by file path
-                        docs_by_file = {}
+                        docs_by_file: dict[str, list[Document]] = {}
                         for doc in documents:
-                            file_path = doc.meta_data.get('file_path', 'unknown')
+                            file_path: str = doc.meta_data.get('file_path', 'unknown')
                             if file_path not in docs_by_file:
                                 docs_by_file[file_path] = []
                             docs_by_file[file_path].append(doc)
 
-                        # Format context text with file path grouping
-                        context_parts = []
+                        context_parts: list[str] = []
                         for file_path, docs in docs_by_file.items():
-                            # Add file header with metadata
-                            header = f"## File Path: {file_path}\n\n"
-                            # Add document content
-                            content = "\n\n".join([doc.text for doc in docs])
+                            header: str = f"## File Path: {file_path}\n\n"
+                            content: str = "\n\n".join([doc.text for doc in docs])
 
                             context_parts.append(f"{header}{content}")
 
-                        # Join all parts with clear separation
                         context_text = "\n\n" + "-" * 10 + "\n\n".join(context_parts)
                     else:
                         logger.warning("No documents retrieved from RAG")
                 except Exception as e:
                     logger.error(f"Error in RAG retrieval: {str(e)}")
-                    # Continue without RAG if there's an error
 
             except Exception as e:
                 logger.error(f"Error retrieving documents: {str(e)}")
                 context_text = ""
 
-        # Get repository information
-        repo_url = request.repo_url
-        repo_name = repo_url.split("/")[-1] if "/" in repo_url else repo_url
+        repo_url: str = request.repo_url
+        repo_name: str = repo_url.split("/")[-1] if "/" in repo_url else repo_url
+        repo_type: str = request.type
 
-        # Determine repository type
-        repo_type = request.type
+        language_code: str = request.language or configs["lang_config"]["default"]
+        supported_langs: dict[str, str] = configs["lang_config"]["supported_languages"]
+        language_name: str = supported_langs.get(language_code, "English")
 
-        # Get language information
-        language_code = request.language or configs["lang_config"]["default"]
-        supported_langs = configs["lang_config"]["supported_languages"]
-        language_name = supported_langs.get(language_code, "English")
-
-        # Create system prompt
         if is_deep_research:
-            # Check if this is the first iteration
-            is_first_iteration = research_iteration == 1
-
-            # Check if this is the final iteration
-            is_final_iteration = research_iteration >= 5
+            is_first_iteration: bool = research_iteration == 1
+            is_final_iteration: bool = research_iteration >= 5
 
             if is_first_iteration:
-                system_prompt = DEEP_RESEARCH_FIRST_ITERATION_PROMPT.format(
+                system_prompt: str = DEEP_RESEARCH_FIRST_ITERATION_PROMPT.format(
                     repo_type=repo_type,
                     repo_url=repo_url,
                     repo_name=repo_name,
                     language_name=language_name
                 )
             elif is_final_iteration:
-                system_prompt = DEEP_RESEARCH_FINAL_ITERATION_PROMPT.format(
+                system_prompt: str = DEEP_RESEARCH_FINAL_ITERATION_PROMPT.format(
                     repo_type=repo_type,
                     repo_url=repo_url,
                     repo_name=repo_name,
@@ -267,7 +234,7 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                     language_name=language_name
                 )
             else:
-                system_prompt = DEEP_RESEARCH_INTERMEDIATE_ITERATION_PROMPT.format(
+                system_prompt: str = DEEP_RESEARCH_INTERMEDIATE_ITERATION_PROMPT.format(
                     repo_type=repo_type,
                     repo_url=repo_url,
                     repo_name=repo_name,
@@ -275,53 +242,45 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                     language_name=language_name
                 )
         else:
-            system_prompt = SIMPLE_CHAT_SYSTEM_PROMPT.format(
+            system_prompt: str = SIMPLE_CHAT_SYSTEM_PROMPT.format(
                 repo_type=repo_type,
                 repo_url=repo_url,
                 repo_name=repo_name,
                 language_name=language_name
             )
 
-        # Fetch file content if provided
-        file_content = ""
+        file_content: str = ""
         if request.filePath:
             try:
-                file_content = get_file_content(request.repo_url, request.filePath, request.type, request.token)
+                file_content: str = get_file_content(request.repo_url, request.filePath, request.type, request.token)
                 logger.info(f"Successfully retrieved content for file: {request.filePath}")
             except Exception as e:
                 logger.error(f"Error retrieving file content: {str(e)}")
-                # Continue without file content if there's an error
 
-        # Format conversation history
-        conversation_history = ""
+        conversation_history: str = ""
         for turn_id, turn in request_rag.memory().items():
             if not isinstance(turn_id, int) and hasattr(turn, 'user_query') and hasattr(turn, 'assistant_response'):
                 conversation_history += f"<turn>\n<user>{turn.user_query.query_str}</user>\n<assistant>{turn.assistant_response.response_str}</assistant>\n</turn>\n"
 
-        # Create the prompt with context
-        prompt = f"/no_think {system_prompt}\n\n"
+        prompt: str = f"/no_think {system_prompt}\n\n"
 
         if conversation_history:
             prompt += f"<conversation_history>\n{conversation_history}</conversation_history>\n\n"
 
-        # Check if filePath is provided and fetch file content if it exists
         if file_content:
-            # Add file content to the prompt after conversation history
             prompt += f"<currentFileContent path=\"{request.filePath}\">\n{file_content}\n</currentFileContent>\n\n"
 
-        # Only include context if it's not empty
-        CONTEXT_START = "<START_OF_CONTEXT>"
-        CONTEXT_END = "<END_OF_CONTEXT>"
+        CONTEXT_START: str = "<START_OF_CONTEXT>"
+        CONTEXT_END: str = "<END_OF_CONTEXT>"
         if context_text.strip():
             prompt += f"{CONTEXT_START}\n{context_text}\n{CONTEXT_END}\n\n"
         else:
-            # Add a note that we're skipping RAG due to size constraints or because it's the isolated API
             logger.info("No context available from RAG")
             prompt += "<note>Answering without retrieval augmentation.</note>\n\n"
 
         prompt += f"<query>\n{query}\n</query>\n\nAssistant: "
 
-        model_config = get_model_config(request.provider, request.model)["model_kwargs"]
+        model_config: dict[str, int|float|Any] = get_model_config(request.provider, request.model)["model_kwargs"]
 
         if request.provider == "ollama":
             prompt += " /no_think"
@@ -368,23 +327,19 @@ async def chat_completions_stream(request: ChatCompletionRequest):
         elif request.provider == "openai":
             logger.info(f"Using Openai protocol with model: {request.model}")
 
-            # Check if an API key is set for Openai
             if not OPENAI_API_KEY:
                 logger.warning("OPENAI_API_KEY not configured, but continuing with request")
-                # We'll let the OpenAIClient handle this and return an error message
 
-            # Initialize Openai client
-            model = OpenAIClient()
-            model_kwargs = {
+            model: OpenAIClient = OpenAIClient()
+            model_kwargs: dict[str, float|str|bool] = {
                 "model": request.model,
                 "stream": True,
                 "temperature": model_config["temperature"]
             }
-            # Only add top_p if it exists in the model config
             if "top_p" in model_config:
                 model_kwargs["top_p"] = model_config["top_p"]
 
-            api_kwargs = model.convert_inputs_to_api_kwargs(
+            api_kwargs: dict[str, Any] = model.convert_inputs_to_api_kwargs(
                 input=prompt,
                 model_kwargs=model_kwargs,
                 model_type=ModelType.LLM
@@ -438,7 +393,6 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                 }
             )
 
-        # Create a streaming response
         async def response_stream():
             try:
                 if request.provider == "ollama":
@@ -463,16 +417,14 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                         yield f"\nError with OpenRouter API: {str(e_openrouter)}\n\nPlease check that you have set the OPENROUTER_API_KEY environment variable with a valid API key."
                 elif request.provider == "openai":
                     try:
-                        # Get the response and handle it properly using the previously created api_kwargs
                         logger.info("Making Openai API call")
                         response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
-                        # Handle streaming response from Openai
                         async for chunk in response:
-                           choices = getattr(chunk, "choices", [])
+                           choices: list[Any] = getattr(chunk, "choices", [])
                            if len(choices) > 0:
                                delta = getattr(choices[0], "delta", None)
                                if delta is not None:
-                                    text = getattr(delta, "content", None)
+                                    text: str = getattr(delta, "content", None)
                                     if text is not None:
                                         yield text
                     except Exception as e_openai:
@@ -668,7 +620,6 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                     # For other errors, return the error message
                     yield f"\nError: {error_message}"
 
-        # Return streaming response
         return StreamingResponse(response_stream(), media_type="text/event-stream")
 
     except HTTPException:

@@ -309,51 +309,36 @@ def prepare_data_pipeline(embedder_type: str = None, is_ollama_embedder: bool = 
     )
     return data_transformer
 
+def get_file_content(repo_url: str, file_path: str, repo_type: str = None, access_token: str = None) -> str:
+    if repo_type == "github":
+        return get_github_file_content(repo_url, file_path, access_token)
+    elif repo_type == "gitlab":
+        return get_gitlab_file_content(repo_url, file_path, access_token)
+    elif repo_type == "bitbucket":
+        return get_bitbucket_file_content(repo_url, file_path, access_token)
+    else:
+        raise ValueError("Unsupported repository type. Only GitHub, GitLab, and Bitbucket are supported.")
+
 def get_github_file_content(repo_url: str, file_path: str, access_token: str = None) -> str:
-    """
-    Retrieves the content of a file from a GitHub repository using the GitHub API.
-    Supports both public GitHub (github.com) and GitHub Enterprise (custom domains).
-    
-    Args:
-        repo_url (str): The URL of the GitHub repository 
-                       (e.g., "https://github.com/username/repo" or "https://github.company.com/username/repo")
-        file_path (str): The path to the file within the repository (e.g., "src/main.py")
-        access_token (str, optional): GitHub personal access token for private repositories
-
-    Returns:
-        str: The content of the file as a string
-
-    Raises:
-        ValueError: If the file cannot be fetched or if the URL is not a valid GitHub URL
-    """
     try:
-        # Parse the repository URL to support both github.com and enterprise GitHub
         parsed_url = urlparse(repo_url)
         if not parsed_url.scheme or not parsed_url.netloc:
             raise ValueError("Not a valid GitHub repository URL")
 
-        # Check if it's a GitHub-like URL structure
-        path_parts = parsed_url.path.strip('/').split('/')
+        path_parts: list[str] = parsed_url.path.strip('/').split('/')
         if len(path_parts) < 2:
             raise ValueError("Invalid GitHub URL format - expected format: https://domain/owner/repo")
 
-        owner = path_parts[-2]
-        repo = path_parts[-1].replace(".git", "")
+        owner: str = path_parts[-2]
+        repo: str = path_parts[-1].replace(".git", "")
 
-        # Determine the API base URL
         if parsed_url.netloc == "github.com":
-            # Public GitHub
-            api_base = "https://api.github.com"
+            api_base: str = "https://api.github.com"
         else:
-            # GitHub Enterprise - API is typically at https://domain/api/v3/
-            api_base = f"{parsed_url.scheme}://{parsed_url.netloc}/api/v3"
+            api_base: str = f"{parsed_url.scheme}://{parsed_url.netloc}/api/v3"
         
-        # Use GitHub API to get file content
-        # The API endpoint for getting file content is: /repos/{owner}/{repo}/contents/{path}
-        api_url = f"{api_base}/repos/{owner}/{repo}/contents/{file_path}"
-
-        # Fetch file content from GitHub API
-        headers = {}
+        api_url: str = f"{api_base}/repos/{owner}/{repo}/contents/{file_path}"
+        headers: dict[str, str] = {}
         if access_token:
             headers["Authorization"] = f"token {access_token}"
         logger.info(f"Fetching file content from GitHub API: {api_url}")
@@ -367,16 +352,13 @@ def get_github_file_content(repo_url: str, file_path: str, access_token: str = N
         except json.JSONDecodeError:
             raise ValueError("Invalid response from GitHub API")
 
-        # Check if we got an error response
         if "message" in content_data and "documentation_url" in content_data:
             raise ValueError(f"GitHub API error: {content_data['message']}")
 
-        # GitHub API returns file content as base64 encoded string
         if "content" in content_data and "encoding" in content_data:
             if content_data["encoding"] == "base64":
-                # The content might be split into lines, so join them first
-                content_base64 = content_data["content"].replace("\n", "")
-                content = base64.b64decode(content_base64).decode("utf-8")
+                content_base64: str = content_data["content"].replace("\n", "")
+                content: str = base64.b64decode(content_base64).decode("utf-8")
                 return content
             else:
                 raise ValueError(f"Unexpected encoding: {content_data['encoding']}")
@@ -543,32 +525,6 @@ def get_bitbucket_file_content(repo_url: str, file_path: str, access_token: str 
     except Exception as e:
         raise ValueError(f"Failed to get file content: {str(e)}")
 
-
-def get_file_content(repo_url: str, file_path: str, repo_type: str = None, access_token: str = None) -> str:
-    """
-    Retrieves the content of a file from a Git repository (GitHub or GitLab).
-
-    Args:
-        repo_type (str): Type of repository
-        repo_url (str): The URL of the repository
-        file_path (str): The path to the file within the repository
-        access_token (str, optional): Access token for private repositories
-
-    Returns:
-        str: The content of the file as a string
-
-    Raises:
-        ValueError: If the file cannot be fetched or if the URL is not valid
-    """
-    if repo_type == "github":
-        return get_github_file_content(repo_url, file_path, access_token)
-    elif repo_type == "gitlab":
-        return get_gitlab_file_content(repo_url, file_path, access_token)
-    elif repo_type == "bitbucket":
-        return get_bitbucket_file_content(repo_url, file_path, access_token)
-    else:
-        raise ValueError("Unsupported repository type. Only GitHub, GitLab, and Bitbucket are supported.")
-
 class DatabaseManager:
 
     def __init__(self):
@@ -668,7 +624,7 @@ class DatabaseManager:
             included_dirs=included_dirs,
             included_files=included_files
         )
-        self.db = transform_documents_and_save_to_db(
+        self.db: List[Document] = transform_documents_and_save_to_db(
             documents, self.repo_paths["save_db_file"], embedder_type=embedder_type
         )
         logger.info(f"Total documents: {len(documents)}")

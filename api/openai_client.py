@@ -184,103 +184,14 @@ class OpenAIClient(ModelClient):
             )
         return OpenAI(api_key=api_key, base_url=self.base_url)
 
-    def init_async_client(self):
-        api_key = self._api_key or os.getenv(self._env_api_key_name)
-        if not api_key:
-            raise ValueError(
-                f"Environment variable {self._env_api_key_name} must be set"
-            )
-        return AsyncOpenAI(api_key=api_key, base_url=self.base_url)
-
-    # def _parse_chat_completion(self, completion: ChatCompletion) -> "GeneratorOutput":
-    #     # TODO: raw output it is better to save the whole completion as a source of truth instead of just the message
-    #     try:
-    #         data = self.chat_completion_parser(completion)
-    #         usage = self.track_completion_usage(completion)
-    #         return GeneratorOutput(
-    #             data=data, error=None, raw_response=str(data), usage=usage
-    #         )
-    #     except Exception as e:
-    #         log.error(f"Error parsing the completion: {e}")
-    #         return GeneratorOutput(data=None, error=str(e), raw_response=completion)
-
-    def parse_chat_completion(
-        self,
-        completion: Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]],
-    ) -> "GeneratorOutput":
-        """Parse the completion, and put it into the raw_response."""
-        log.debug(f"completion: {completion}, parser: {self.chat_completion_parser}")
-        try:
-            data = self.chat_completion_parser(completion)
-        except Exception as e:
-            log.error(f"Error parsing the completion: {e}")
-            return GeneratorOutput(data=None, error=str(e), raw_response=completion)
-
-        try:
-            usage = self.track_completion_usage(completion)
-            return GeneratorOutput(
-                data=None, error=None, raw_response=data, usage=usage
-            )
-        except Exception as e:
-            log.error(f"Error tracking the completion usage: {e}")
-            return GeneratorOutput(data=None, error=str(e), raw_response=data)
-
-    def track_completion_usage(
-        self,
-        completion: Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]],
-    ) -> CompletionUsage:
-
-        try:
-            usage: CompletionUsage = CompletionUsage(
-                completion_tokens=completion.usage.completion_tokens,
-                prompt_tokens=completion.usage.prompt_tokens,
-                total_tokens=completion.usage.total_tokens,
-            )
-            return usage
-        except Exception as e:
-            log.error(f"Error tracking the completion usage: {e}")
-            return CompletionUsage(
-                completion_tokens=None, prompt_tokens=None, total_tokens=None
-            )
-
-    def parse_embedding_response(
-        self, response: CreateEmbeddingResponse
-    ) -> EmbedderOutput:
-        r"""Parse the embedding response to a structure Adalflow components can understand.
-
-        Should be called in ``Embedder``.
-        """
-        try:
-            return parse_embedding_response(response)
-        except Exception as e:
-            log.error(f"Error parsing the embedding response: {e}")
-            return EmbedderOutput(data=[], error=str(e), raw_response=response)
-
     def convert_inputs_to_api_kwargs(
         self,
         input: Optional[Any] = None,
         model_kwargs: Dict = {},
         model_type: ModelType = ModelType.UNDEFINED,
     ) -> Dict:
-        r"""
-        Specify the API input type and output api_kwargs that will be used in _call and _acall methods.
-        Convert the Component's standard input, and system_input(chat model) and model_kwargs into API-specific format.
-        For multimodal inputs, images can be provided in model_kwargs["images"] as a string path, URL, or list of them.
-        The model specified in model_kwargs["model"] must support multimodal capabilities when using images.
 
-        Args:
-            input: The input text or messages to process
-            model_kwargs: Additional parameters including:
-                - images: Optional image source(s) as path, URL, or list of them
-                - detail: Image detail level ('auto', 'low', or 'high'), defaults to 'auto'
-                - model: The model to use (must support multimodal inputs if images are provided)
-            model_type: The type of model (EMBEDDER or LLM)
-
-        Returns:
-            Dict: API-specific kwargs for the model call
-        """
-
-        final_model_kwargs = model_kwargs.copy()
+        final_model_kwargs: Dict = model_kwargs.copy()
         if model_type == ModelType.EMBEDDER:
             if isinstance(input, str):
                 input = [input]
@@ -289,7 +200,6 @@ class OpenAIClient(ModelClient):
                 raise TypeError("input must be a sequence of text")
             final_model_kwargs["input"] = input
         elif model_type == ModelType.LLM:
-            # convert input to messages
             messages: List[Dict[str, str]] = []
             images = final_model_kwargs.pop("images", None)
             detail = final_model_kwargs.pop("detail", "auto")
@@ -369,6 +279,117 @@ class OpenAIClient(ModelClient):
             raise ValueError(f"model_type {model_type} is not supported")
 
         return final_model_kwargs
+
+    @backoff.on_exception(
+        backoff.expo,
+        (
+            APITimeoutError,
+            InternalServerError,
+            RateLimitError,
+            UnprocessableEntityError,
+            BadRequestError,
+        ),
+        max_time=5,
+    )
+    async def acall(
+        self, api_kwargs: Dict = {}, model_type: ModelType = ModelType.UNDEFINED
+    ):
+        self._api_kwargs = api_kwargs
+        if self.async_client is None:
+            self.async_client: AsyncOpenAI = self.init_async_client()
+        if model_type == ModelType.EMBEDDER:
+            return await self.async_client.embeddings.create(**api_kwargs)
+        elif model_type == ModelType.LLM:
+            return await self.async_client.chat.completions.create(**api_kwargs)
+        elif model_type == ModelType.IMAGE_GENERATION:
+            # Determine which image API to call based on the presence of image/mask
+            if "image" in api_kwargs:
+                if "mask" in api_kwargs:
+                    # Image edit
+                    response = await self.async_client.images.edit(**api_kwargs)
+                else:
+                    # Image variation
+                    response = await self.async_client.images.create_variation(
+                        **api_kwargs
+                    )
+            else:
+                # Image generation
+                response = await self.async_client.images.generate(**api_kwargs)
+            return response.data
+        else:
+            raise ValueError(f"model_type {model_type} is not supported")
+
+    def init_async_client(self):
+        api_key: str = self._api_key or os.getenv(self._env_api_key_name)
+        if not api_key:
+            raise ValueError(
+                f"Environment variable {self._env_api_key_name} must be set"
+            )
+        return AsyncOpenAI(api_key=api_key, base_url=self.base_url)
+
+    # def _parse_chat_completion(self, completion: ChatCompletion) -> "GeneratorOutput":
+    #     # TODO: raw output it is better to save the whole completion as a source of truth instead of just the message
+    #     try:
+    #         data = self.chat_completion_parser(completion)
+    #         usage = self.track_completion_usage(completion)
+    #         return GeneratorOutput(
+    #             data=data, error=None, raw_response=str(data), usage=usage
+    #         )
+    #     except Exception as e:
+    #         log.error(f"Error parsing the completion: {e}")
+    #         return GeneratorOutput(data=None, error=str(e), raw_response=completion)
+
+    def parse_chat_completion(
+        self,
+        completion: Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]],
+    ) -> "GeneratorOutput":
+        """Parse the completion, and put it into the raw_response."""
+        log.debug(f"completion: {completion}, parser: {self.chat_completion_parser}")
+        try:
+            data = self.chat_completion_parser(completion)
+        except Exception as e:
+            log.error(f"Error parsing the completion: {e}")
+            return GeneratorOutput(data=None, error=str(e), raw_response=completion)
+
+        try:
+            usage = self.track_completion_usage(completion)
+            return GeneratorOutput(
+                data=None, error=None, raw_response=data, usage=usage
+            )
+        except Exception as e:
+            log.error(f"Error tracking the completion usage: {e}")
+            return GeneratorOutput(data=None, error=str(e), raw_response=data)
+
+    def track_completion_usage(
+        self,
+        completion: Union[ChatCompletion, Generator[ChatCompletionChunk, None, None]],
+    ) -> CompletionUsage:
+
+        try:
+            usage: CompletionUsage = CompletionUsage(
+                completion_tokens=completion.usage.completion_tokens,
+                prompt_tokens=completion.usage.prompt_tokens,
+                total_tokens=completion.usage.total_tokens,
+            )
+            return usage
+        except Exception as e:
+            log.error(f"Error tracking the completion usage: {e}")
+            return CompletionUsage(
+                completion_tokens=None, prompt_tokens=None, total_tokens=None
+            )
+
+    def parse_embedding_response(
+        self, response: CreateEmbeddingResponse
+    ) -> EmbedderOutput:
+        r"""Parse the embedding response to a structure Adalflow components can understand.
+
+        Should be called in ``Embedder``.
+        """
+        try:
+            return parse_embedding_response(response)
+        except Exception as e:
+            log.error(f"Error parsing the embedding response: {e}")
+            return EmbedderOutput(data=[], error=str(e), raw_response=response)
 
     def parse_image_generation_response(self, response: List[Image]) -> GeneratorOutput:
         """Parse the image generation response into a GeneratorOutput."""
@@ -459,49 +480,6 @@ class OpenAIClient(ModelClient):
             else:
                 # Image generation
                 response = self.sync_client.images.generate(**api_kwargs)
-            return response.data
-        else:
-            raise ValueError(f"model_type {model_type} is not supported")
-
-    @backoff.on_exception(
-        backoff.expo,
-        (
-            APITimeoutError,
-            InternalServerError,
-            RateLimitError,
-            UnprocessableEntityError,
-            BadRequestError,
-        ),
-        max_time=5,
-    )
-    async def acall(
-        self, api_kwargs: Dict = {}, model_type: ModelType = ModelType.UNDEFINED
-    ):
-        """
-        kwargs is the combined input and model_kwargs
-        """
-        # store the api kwargs in the client
-        self._api_kwargs = api_kwargs
-        if self.async_client is None:
-            self.async_client = self.init_async_client()
-        if model_type == ModelType.EMBEDDER:
-            return await self.async_client.embeddings.create(**api_kwargs)
-        elif model_type == ModelType.LLM:
-            return await self.async_client.chat.completions.create(**api_kwargs)
-        elif model_type == ModelType.IMAGE_GENERATION:
-            # Determine which image API to call based on the presence of image/mask
-            if "image" in api_kwargs:
-                if "mask" in api_kwargs:
-                    # Image edit
-                    response = await self.async_client.images.edit(**api_kwargs)
-                else:
-                    # Image variation
-                    response = await self.async_client.images.create_variation(
-                        **api_kwargs
-                    )
-            else:
-                # Image generation
-                response = await self.async_client.images.generate(**api_kwargs)
             return response.data
         else:
             raise ValueError(f"model_type {model_type} is not supported")
