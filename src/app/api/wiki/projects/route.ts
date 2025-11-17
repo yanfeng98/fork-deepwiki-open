@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 
-// This should match the expected structure from your Python backend
 interface ApiProcessedProject {
   id: string;
   owner: string;
@@ -10,7 +9,7 @@ interface ApiProcessedProject {
   submittedAt: number;
   language: string;
 }
-// Payload for deleting a project cache
+
 interface DeleteProjectCachePayload {
   owner: string;
   repo: string;
@@ -18,7 +17,6 @@ interface DeleteProjectCachePayload {
   language: string;
 }
 
-/** Type guard to validate DeleteProjectCachePayload at runtime */
 function isDeleteProjectCachePayload(obj: unknown): obj is DeleteProjectCachePayload {
   return (
     obj != null &&
@@ -30,7 +28,6 @@ function isDeleteProjectCachePayload(obj: unknown): obj is DeleteProjectCachePay
   );
 }
 
-// Ensure this matches your Python backend configuration
 const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_HOST || 'http://localhost:8001';
 const PROJECTS_API_ENDPOINT = `${PYTHON_BACKEND_URL}/api/processed_projects`;
 const CACHE_API_ENDPOINT = `${PYTHON_BACKEND_URL}/api/wiki_cache`;
@@ -41,13 +38,11 @@ export async function GET() {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        // Add any other headers your Python backend might require, e.g., API keys
       },
-      cache: 'no-store', // Ensure fresh data is fetched every time
+      cache: 'no-store',
     });
 
     if (!response.ok) {
-      // Try to parse error from backend, otherwise use status text
       let errorBody = { error: `Failed to fetch from Python backend: ${response.statusText}` };
       try {
         errorBody = await response.json();
@@ -67,7 +62,7 @@ export async function GET() {
     const message = error instanceof Error ? error.message : 'An unknown error occurred';
     return NextResponse.json(
       { error: `Failed to connect to the Python backend. ${message}` },
-      { status: 503 } // Service Unavailable
+      { status: 503 }
     );
   }
 }

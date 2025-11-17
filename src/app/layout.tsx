@@ -4,7 +4,6 @@ import "./globals.css";
 import { ThemeProvider } from "next-themes";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 
-// Japanese-friendly fonts
 const notoSansJP = Noto_Sans_JP({
   variable: "--font-geist-sans",
   subsets: ["latin"],
