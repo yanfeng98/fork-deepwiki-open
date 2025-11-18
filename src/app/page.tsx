@@ -46,31 +46,25 @@ export default function Home() {
   const { language, setLanguage, messages, supportedLanguages } = useLanguage();
   const { projects, isLoading: projectsLoading } = useProcessedProjects();
 
-  // Create a simple translation function
   const t = (key: string, params: Record<string, string | number> = {}): string => {
-    // Split the key by dots to access nested properties
     const keys = key.split('.');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let value: any = messages;
 
-    // Navigate through the nested properties
     for (const k of keys) {
       if (value && typeof value === 'object' && k in value) {
         value = value[k];
       } else {
-        // Return the key if the translation is not found
         return key;
       }
     }
 
-    // If the value is a string, replace parameters
     if (typeof value === 'string') {
       return Object.entries(params).reduce((acc: string, [paramKey, paramValue]) => {
         return acc.replace(`{${paramKey}}`, String(paramValue));
       }, value);
     }
 
-    // Return the key if the value is not a string
     return key;
   };
 
@@ -120,13 +114,11 @@ export default function Home() {
     }
   }, []);
 
-  // Provider-based model selection state
   const [provider, setProvider] = useState<string>('');
   const [model, setModel] = useState<string>('');
   const [isCustomModel, setIsCustomModel] = useState<boolean>(false);
   const [customModel, setCustomModel] = useState<string>('');
 
-  // Wiki type state - default to comprehensive view
   const [isComprehensiveView, setIsComprehensiveView] = useState<boolean>(true);
 
   const [excludedDirs, setExcludedDirs] = useState('');
@@ -139,12 +131,10 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<string>(language);
 
-  // Authentication state
   const [authRequired, setAuthRequired] = useState<boolean>(false);
   const [authCode, setAuthCode] = useState<string>('');
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
-  // Sync the language context with the selectedLanguage state
   useEffect(() => {
     setLanguage(selectedLanguage);
   }, [selectedLanguage, setLanguage]);
