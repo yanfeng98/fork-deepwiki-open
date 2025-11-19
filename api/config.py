@@ -40,7 +40,7 @@ if AWS_ROLE_ARN:
 
 raw_auth_mode: str = os.environ.get('DEEPWIKI_AUTH_MODE', 'False')
 WIKI_AUTH_MODE: bool = raw_auth_mode.lower() in ['true', '1', 't']
-WIKI_AUTH_CODE = os.environ.get('DEEPWIKI_AUTH_CODE', '')
+WIKI_AUTH_CODE: str = os.environ.get('DEEPWIKI_AUTH_CODE', '')
 
 EMBEDDER_TYPE: str = os.environ.get('DEEPWIKI_EMBEDDER_TYPE', 'openai').lower()
 CONFIG_DIR: str = os.environ.get('DEEPWIKI_CONFIG_DIR', None)

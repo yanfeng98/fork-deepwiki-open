@@ -6,7 +6,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    // Forward the request to the backend API
     const response = await fetch(`${TARGET_SERVER_BASE_URL}/auth/validate`, {
       method: 'POST',
       headers: {

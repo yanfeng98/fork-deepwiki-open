@@ -139,7 +139,6 @@ export default function Home() {
     setLanguage(selectedLanguage);
   }, [selectedLanguage, setLanguage]);
 
-  // Fetch authentication status on component mount
   useEffect(() => {
     const fetchAuthStatus = async () => {
       try {
@@ -152,7 +151,6 @@ export default function Home() {
         setAuthRequired(data.auth_required);
       } catch (err) {
         console.error("Failed to fetch auth status:", err);
-        // Assuming auth is required if fetch fails to avoid blocking UI for safety
         setAuthRequired(true);
       } finally {
         setIsAuthLoading(false);
@@ -162,7 +160,6 @@ export default function Home() {
     fetchAuthStatus();
   }, []);
 
-  // Parse repository URL/input and extract owner and repo
   const parseRepositoryInput = (input: string): {
     owner: string,
     repo: string,
@@ -175,7 +172,6 @@ export default function Home() {
     let owner = '', repo = '', type = 'github', fullPath;
     let localPath: string | undefined;
 
-    // Handle Windows absolute paths (e.g., C:\path\to\folder)
     const windowsPathRegex = /^[a-zA-Z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*$/;
     const customGitRegex = /^(?:https?:\/\/)?([^\/]+)\/(.+?)\/([^\/]+)(?:\.git)?\/?$/;
 
@@ -185,7 +181,6 @@ export default function Home() {
       repo = input.split('\\').pop() || 'local-repo';
       owner = 'local';
     }
-    // Handle Unix/Linux absolute paths (e.g., /path/to/folder)
     else if (input.startsWith('/')) {
       type = 'local';
       localPath = input;
@@ -193,7 +188,6 @@ export default function Home() {
       owner = 'local';
     }
     else if (customGitRegex.test(input)) {
-      // Detect repository type based on domain
       const domain = extractUrlDomain(input);
       if (domain?.includes('github.com')) {
         type = 'github';
@@ -202,7 +196,7 @@ export default function Home() {
       } else if (domain?.includes('bitbucket.org') || domain?.includes('bitbucket.')) {
         type = 'bitbucket';
       } else {
-        type = 'web'; // fallback for other git hosting services
+        type = 'web';
       }
 
       fullPath = extractUrlPath(input)?.replace(/\.git$/, '');
@@ -212,7 +206,6 @@ export default function Home() {
         owner = parts[parts.length - 2] || '';
       }
     }
-    // Unsupported URL formats
     else {
       console.error('Unsupported URL format:', input);
       return null;
@@ -222,11 +215,9 @@ export default function Home() {
       return null;
     }
 
-    // Clean values
     owner = owner.trim();
     repo = repo.trim();
 
-    // Remove .git suffix if present
     if (repo.endsWith('.git')) {
       repo = repo.slice(0, -4);
     }
@@ -234,13 +225,11 @@ export default function Home() {
     return { owner, repo, type, fullPath, localPath };
   };
 
-  // State for configuration modal
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Parse repository input to validate
     const parsedRepo = parseRepositoryInput(repositoryInput);
 
     if (!parsedRepo) {
@@ -248,7 +237,6 @@ export default function Home() {
       return;
     }
 
-    // If valid, open the configuration modal
     setError(null);
     setIsConfigModalOpen(true);
   };
@@ -280,7 +268,6 @@ export default function Home() {
 
   const handleGenerateWiki = async () => {
 
-    // Check authorization code
     const validation = await validateAuthCode();
     if(!validation) {
       setError(`Failed to validate the authorization code`);
@@ -289,7 +276,6 @@ export default function Home() {
       return;
     }
 
-    // Prevent multiple submissions
     if (isSubmitting) {
       console.log('Form submission already in progress, ignoring duplicate click');
       return;
@@ -321,7 +307,6 @@ export default function Home() {
 
     setIsSubmitting(true);
 
-    // Parse repository input
     const parsedRepo = parseRepositoryInput(repositoryInput);
 
     if (!parsedRepo) {
@@ -332,26 +317,24 @@ export default function Home() {
 
     const { owner, repo, type, localPath } = parsedRepo;
 
-    // Store tokens in query params if they exist
     const params = new URLSearchParams();
     if (accessToken) {
       params.append('token', accessToken);
     }
-    // Always include the type parameter
     params.append('type', (type == 'local' ? type : selectedPlatform) || 'github');
-    // Add local path if it exists
+    
     if (localPath) {
       params.append('local_path', encodeURIComponent(localPath));
     } else {
       params.append('repo_url', encodeURIComponent(repositoryInput));
     }
-    // Add model parameters
+    
     params.append('provider', provider);
     params.append('model', model);
     if (isCustomModel && customModel) {
       params.append('custom_model', customModel);
     }
-    // Add file filters configuration
+
     if (excludedDirs) {
       params.append('excluded_dirs', excludedDirs);
     }
@@ -365,18 +348,12 @@ export default function Home() {
       params.append('included_files', includedFiles);
     }
 
-    // Add language parameter
     params.append('language', selectedLanguage);
-
-    // Add comprehensive parameter
     params.append('comprehensive', isComprehensiveView.toString());
 
     const queryString = params.toString() ? `?${params.toString()}` : '';
 
-    // Navigate to the dynamic route
     router.push(`/${owner}/${repo}${queryString}`);
-
-    // The isSubmitting state will be reset when the component unmounts during navigation
   };
 
   return (
