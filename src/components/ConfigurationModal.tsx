@@ -9,19 +9,15 @@ interface ConfigurationModalProps {
   isOpen: boolean;
   onClose: () => void;
 
-  // Repository input
   repositoryInput: string;
 
-  // Language selection
   selectedLanguage: string;
   setSelectedLanguage: (value: string) => void;
   supportedLanguages: Record<string, string>;
 
-  // Wiki type options
   isComprehensiveView: boolean;
   setIsComprehensiveView: (value: boolean) => void;
 
-  // Model selection
   provider: string;
   setProvider: (value: string) => void;
   model: string;
@@ -31,15 +27,12 @@ interface ConfigurationModalProps {
   customModel: string;
   setCustomModel: (value: string) => void;
 
-  // Platform selection
   selectedPlatform: 'github' | 'gitlab' | 'bitbucket';
   setSelectedPlatform: (value: 'github' | 'gitlab' | 'bitbucket') => void;
 
-  // Access token
   accessToken: string;
   setAccessToken: (value: string) => void;
 
-  // File filter options
   excludedDirs: string;
   setExcludedDirs: (value: string) => void;
   excludedFiles: string;
@@ -49,11 +42,9 @@ interface ConfigurationModalProps {
   includedFiles: string;
   setIncludedFiles: (value: string) => void;
 
-  // Form submission
   onSubmit: () => void;
   isSubmitting: boolean;
 
-  // Authentication
   authRequired?: boolean;
   authCode?: string;
   setAuthCode?: (code: string) => void;
@@ -98,7 +89,6 @@ export default function ConfigurationModal({
 }: ConfigurationModalProps) {
   const { messages: t } = useLanguage();
 
-  // Show token section state
   const [showTokenSection, setShowTokenSection] = useState(false);
 
   if (!isOpen) return null;

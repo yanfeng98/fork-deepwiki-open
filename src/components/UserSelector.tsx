@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
-// Define the interfaces for our model configuration
 interface Model {
   id: string;
   name: string;
@@ -31,7 +30,6 @@ interface ModelSelectorProps {
   customModel: string;
   setCustomModel: (value: string) => void;
 
-  // File filter configuration
   showFileFilters?: boolean;
   excludedDirs?: string;
   setExcludedDirs?: (value: string) => void;
@@ -52,8 +50,6 @@ export default function UserSelector({
   setIsCustomModel,
   customModel,
   setCustomModel,
-
-  // File filter configuration
   showFileFilters = false,
   excludedDirs = '',
   setExcludedDirs,
@@ -64,18 +60,15 @@ export default function UserSelector({
   includedFiles = '',
   setIncludedFiles
 }: ModelSelectorProps) {
-  // State to manage the visibility of the filters modal and filter section
+
   const [isFilterSectionOpen, setIsFilterSectionOpen] = useState(false);
-  // State to manage filter mode: 'exclude' or 'include'
   const [filterMode, setFilterMode] = useState<'exclude' | 'include'>('exclude');
   const { messages: t } = useLanguage();
 
-  // State for model configurations from backend
   const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // State for viewing default values
   const [showDefaultDirs, setShowDefaultDirs] = useState(false);
   const [showDefaultFiles, setShowDefaultFiles] = useState(false);
 
