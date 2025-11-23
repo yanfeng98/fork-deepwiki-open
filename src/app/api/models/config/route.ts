@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server';
 
-// The target backend server base URL, derived from environment variable or defaulted.
 const TARGET_SERVER_BASE_URL = process.env.SERVER_BASE_URL || 'http://localhost:8001';
 
 export async function GET() {
   try {
     const targetUrl = `${TARGET_SERVER_BASE_URL}/models/config`;
 
-    // Make the actual request to the backend service
     const backendResponse = await fetch(targetUrl, {
       method: 'GET',
       headers: {
@@ -15,7 +13,6 @@ export async function GET() {
       }
     });
 
-    // If the backend service responds with an error
     if (!backendResponse.ok) {
       return NextResponse.json(
         { error: `Backend service responded with status: ${backendResponse.status}` },
@@ -23,7 +20,6 @@ export async function GET() {
       );
     }
 
-    // Forward the response from the backend
     const modelConfig = await backendResponse.json();
     return NextResponse.json(modelConfig);
   } catch (error) {

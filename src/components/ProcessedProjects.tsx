@@ -4,7 +4,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { FaTimes, FaTh, FaList } from 'react-icons/fa';
 
-// Interface should match the structure from the API
 interface ProcessedProject {
   id: string;
   owner: string;
@@ -19,7 +18,7 @@ interface ProcessedProjectsProps {
   showHeader?: boolean;
   maxItems?: number;
   className?: string;
-  messages?: Record<string, Record<string, string>>; // Translation messages with proper typing
+  messages?: Record<string, Record<string, string>>;
 }
 
 export default function ProcessedProjects({ 
@@ -34,7 +33,6 @@ export default function ProcessedProjects({
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
 
-  // Default messages fallback
   const defaultMessages = {
     title: 'Processed Wiki Projects',
     searchPlaceholder: 'Search projects by name, owner, or repository...',
@@ -80,7 +78,6 @@ export default function ProcessedProjects({
     fetchProjects();
   }, []);
 
-  // Filter projects based on search query
   const filteredProjects = useMemo(() => {
     if (!searchQuery.trim()) {
       return maxItems ? projects.slice(0, maxItems) : projects;

@@ -14,8 +14,7 @@ import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FaBitbucket, FaBookOpen, FaComments, FaDownload, FaExclamationTriangle, FaFileExport, FaFolder, FaGithub, FaGitlab, FaHome, FaSync, FaTimes } from 'react-icons/fa';
-// Define the WikiSection and WikiStructure types directly in this file
-// since the imported types don't have the sections and rootSections properties
+
 interface WikiSection {
   id: string;
   title: string;
@@ -44,7 +43,6 @@ interface WikiStructure {
   rootSections: string[];
 }
 
-// Add CSS styles for wiki with Japanese aesthetic
 const wikiStyles = `
   .prose code {
     @apply bg-[var(--background)]/70 px-1.5 py-0.5 rounded font-mono text-xs border border-[var(--border-color)];
@@ -87,12 +85,10 @@ const wikiStyles = `
   }
 `;
 
-// Helper function to generate cache key for localStorage
 const getCacheKey = (owner: string, repo: string, repoType: string, language: string, isComprehensive: boolean = true): string => {
   return `deepwiki_cache_${repoType}_${owner}_${repo}_${language}_${isComprehensive ? 'comprehensive' : 'concise'}`;
 };
 
-// Helper function to add tokens and other parameters to request body
 const addTokensToRequestBody = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   requestBody: Record<string, any>,
@@ -112,7 +108,6 @@ const addTokensToRequestBody = (
     requestBody.token = token;
   }
 
-  // Add provider-based model selection parameters
   requestBody.provider = provider;
   requestBody.model = model;
   if (isCustomModel && customModel) {
@@ -121,7 +116,6 @@ const addTokensToRequestBody = (
 
   requestBody.language = language;
 
-  // Add file filter parameters if provided
   if (excludedDirs) {
     requestBody.excluded_dirs = excludedDirs;
   }
@@ -175,15 +169,12 @@ const createBitbucketHeaders = (bitbucketToken: string): HeadersInit => {
 
 
 export default function RepoWikiPage() {
-  // Get route parameters and search params
   const params = useParams();
   const searchParams = useSearchParams();
 
-  // Extract owner and repo from route params
   const owner = params.owner as string;
   const repo = params.repo as string;
 
-  // Extract tokens from search params
   const token = searchParams.get('token') || '';
   const localPath = searchParams.get('local_path') ? decodeURIComponent(searchParams.get('local_path') || '') : undefined;
   const repoUrl = searchParams.get('repo_url') ? decodeURIComponent(searchParams.get('repo_url') || '') : undefined;
@@ -209,10 +200,8 @@ export default function RepoWikiPage() {
         ? 'github'
         : searchParams.get('type') || 'github';
 
-  // Import language context for translations
   const { messages } = useLanguage();
 
-  // Initialize repo info
   const repoInfo = useMemo<RepoInfo>(() => ({
     owner,
     repo,
@@ -222,7 +211,6 @@ export default function RepoWikiPage() {
     repoUrl: repoUrl || null
   }), [owner, repo, repoType, localPath, repoUrl, token]);
 
-  // State variables
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState<string | undefined>(
     messages.loading?.initializing || 'Initializing wiki generation...'
@@ -236,16 +224,15 @@ export default function RepoWikiPage() {
   const [exportError, setExportError] = useState<string | null>(null);
   const [originalMarkdown, setOriginalMarkdown] = useState<Record<string, string>>({});
   const [requestInProgress, setRequestInProgress] = useState(false);
-  const [currentToken, setCurrentToken] = useState(token); // Track current effective token
-  const [effectiveRepoInfo, setEffectiveRepoInfo] = useState(repoInfo); // Track effective repo info with cached data
+  const [currentToken, setCurrentToken] = useState(token);
+  const [effectiveRepoInfo, setEffectiveRepoInfo] = useState(repoInfo);
   const [embeddingError, setEmbeddingError] = useState(false);
 
-  // Model selection state variables
   const [selectedProviderState, setSelectedProviderState] = useState(providerParam);
   const [selectedModelState, setSelectedModelState] = useState(modelParam);
   const [isCustomSelectedModelState, setIsCustomSelectedModelState] = useState(isCustomModelParam);
   const [customSelectedModelState, setCustomSelectedModelState] = useState(customModelParam);
-  const [showModelOptions, setShowModelOptions] = useState(false); // Controls whether to show model options
+  const [showModelOptions, setShowModelOptions] = useState(false);
   const excludedDirs = searchParams.get('excluded_dirs') || '';
   const excludedFiles = searchParams.get('excluded_files') || '';
   const [modelExcludedDirs, setModelExcludedDirs] = useState(excludedDirs);
@@ -255,38 +242,25 @@ export default function RepoWikiPage() {
   const [modelIncludedDirs, setModelIncludedDirs] = useState(includedDirs);
   const [modelIncludedFiles, setModelIncludedFiles] = useState(includedFiles);
 
-
-  // Wiki type state - default to comprehensive view
   const isComprehensiveParam = searchParams.get('comprehensive') !== 'false';
   const [isComprehensiveView, setIsComprehensiveView] = useState(isComprehensiveParam);
-  // Using useRef for activeContentRequests to maintain a single instance across renders
-  // This map tracks which pages are currently being processed to prevent duplicate requests
-  // Note: In a multi-threaded environment, additional synchronization would be needed,
-  // but in React's single-threaded model, this is safe as long as we set the flag before any async operations
   const activeContentRequests = useRef(new Map<string, boolean>()).current;
   const [structureRequestInProgress, setStructureRequestInProgress] = useState(false);
-  // Create a flag to track if data was loaded from cache to prevent immediate re-save
   const cacheLoadedSuccessfully = useRef(false);
 
-  // Create a flag to ensure the effect only runs once
   const effectRan = React.useRef(false);
 
-  // State for Ask modal
   const [isAskModalOpen, setIsAskModalOpen] = useState(false);
   const askComponentRef = useRef<{ clearConversation: () => void } | null>(null);
 
-  // Authentication state
   const [authRequired, setAuthRequired] = useState<boolean>(false);
   const [authCode, setAuthCode] = useState<string>('');
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
-  // Default branch state
   const [defaultBranch, setDefaultBranch] = useState<string>('main');
 
-  // Helper function to generate proper repository file URLs
   const generateFileUrl = useCallback((filePath: string): string => {
     if (effectiveRepoInfo.type === 'local') {
-      // For local repositories, we can't generate web URLs
       return filePath;
     }
 
@@ -313,22 +287,16 @@ export default function RepoWikiPage() {
       console.warn('Error generating file URL:', error);
     }
 
-    // Fallback to just the file path
     return filePath;
   }, [effectiveRepoInfo, defaultBranch]);
 
-  // Memoize repo info to avoid triggering updates in callbacks
-
-  // Add useEffect to handle scroll reset
   useEffect(() => {
-    // Scroll to top when currentPageId changes
     const wikiContent = document.getElementById('wiki-content');
     if (wikiContent) {
       wikiContent.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [currentPageId]);
 
-  // close the modal when escape is pressed
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -340,13 +308,11 @@ export default function RepoWikiPage() {
       window.addEventListener('keydown', handleEsc);
     }
 
-    // Cleanup on unmount or when modal closes
     return () => {
       window.removeEventListener('keydown', handleEsc);
     };
   }, [isAskModalOpen]);
 
-  // Fetch authentication status on component mount
   useEffect(() => {
     const fetchAuthStatus = async () => {
       try {
@@ -359,7 +325,6 @@ export default function RepoWikiPage() {
         setAuthRequired(data.auth_required);
       } catch (err) {
         console.error("Failed to fetch auth status:", err);
-        // Assuming auth is required if fetch fails to avoid blocking UI for safety
         setAuthRequired(true);
       } finally {
         setIsAuthLoading(false);
@@ -680,7 +645,6 @@ Remember:
     });
   }, [generatedPages, currentToken, effectiveRepoInfo, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, modelExcludedDirs, modelExcludedFiles, language, activeContentRequests, generateFileUrl]);
 
-  // Determine the wiki structure from repository data
   const determineWikiStructure = useCallback(async (fileTree: string, readme: string, owner: string, repo: string) => {
     if (!owner || !repo) {
       setError('Invalid repository information. Owner and repo name are required.');
@@ -1163,27 +1127,22 @@ IMPORTANT:
     }
   }, [generatePageContent, currentToken, effectiveRepoInfo, pagesInProgress.size, structureRequestInProgress, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, modelExcludedDirs, modelExcludedFiles, language, messages.loading, isComprehensiveView]);
 
-  // Fetch repository structure using GitHub or GitLab API
   const fetchRepositoryStructure = useCallback(async () => {
-    // If a request is already in progress, don't start another one
     if (requestInProgress) {
       console.log('Repository fetch already in progress, skipping duplicate call');
       return;
     }
 
-    // Reset previous state
     setWikiStructure(undefined);
     setCurrentPageId(undefined);
     setGeneratedPages({});
     setPagesInProgress(new Set());
     setError(null);
-    setEmbeddingError(false); // Reset embedding error state
+    setEmbeddingError(false);
 
     try {
-      // Set the request in progress flag
       setRequestInProgress(true);
 
-      // Update loading state
       setIsLoading(true);
       setLoadingMessage(messages.loading?.fetchingStructure || 'Fetching repository structure...');
 
@@ -1202,28 +1161,23 @@ IMPORTANT:
           const data = await response.json();
           fileTreeData = data.file_tree;
           readmeContent = data.readme;
-          // For local repos, we can't determine the actual branch, so use 'main' as default
           setDefaultBranch('main');
         } catch (err) {
           throw err;
         }
       } else if (effectiveRepoInfo.type === 'github') {
-        // GitHub API approach
-        // Try to get the tree data for common branch names
         let treeData = null;
         let apiErrorDetails = '';
 
-        // Determine the GitHub API base URL based on the repository URL
         const getGithubApiUrl = (repoUrl: string | null): string => {
           if (!repoUrl) {
-            return 'https://api.github.com'; // Default to public GitHub
+            return 'https://api.github.com';
           }
           
           try {
             const url = new URL(repoUrl);
             const hostname = url.hostname;
             
-            // If it's the public GitHub, use the standard API URL
             if (hostname === 'github.com') {
               return 'https://api.github.com';
             }
@@ -1232,12 +1186,11 @@ IMPORTANT:
             // GitHub Enterprise API URL format: https://github.company.com/api/v3
             return `${url.protocol}//${hostname}/api/v3`;
           } catch {
-            return 'https://api.github.com'; // Fallback to public GitHub if URL parsing fails
+            return 'https://api.github.com';
           }
         };
 
         const githubApiBaseUrl = getGithubApiUrl(effectiveRepoInfo.repoUrl);
-        // First, try to get the default branch from the repository info
         let defaultBranchLocal = null;
         try {
           const repoInfoResponse = await fetch(`${githubApiBaseUrl}/repos/${owner}/${repo}`, {
@@ -1248,14 +1201,12 @@ IMPORTANT:
             const repoData = await repoInfoResponse.json();
             defaultBranchLocal = repoData.default_branch;
             console.log(`Found default branch: ${defaultBranchLocal}`);
-            // Store the default branch in state
             setDefaultBranch(defaultBranchLocal || 'main');
           }
         } catch (err) {
           console.warn('Could not fetch repository info for default branch:', err);
         }
 
-        // Create list of branches to try, prioritizing the actual default branch
         const branchesToTry = defaultBranchLocal 
           ? [defaultBranchLocal, 'main', 'master'].filter((branch, index, arr) => arr.indexOf(branch) === index)
           : ['main', 'master'];
@@ -1292,13 +1243,11 @@ IMPORTANT:
           }
         }
 
-        // Convert tree data to a string representation
         fileTreeData = treeData.tree
           .filter((item: { type: string; path: string }) => item.type === 'blob')
           .map((item: { type: string; path: string }) => item.path)
           .join('\n');
 
-        // Try to fetch README.md content
         try {
           const headers = createGithubHeaders(currentToken);
 
@@ -1480,7 +1429,6 @@ IMPORTANT:
         }
       }
 
-      // Now determine the wiki structure
       await determineWikiStructure(fileTreeData, readmeContent, owner, repo);
 
     } catch (error) {
@@ -1489,7 +1437,6 @@ IMPORTANT:
       setError(error instanceof Error ? error.message : 'An unknown error occurred');
       setLoadingMessage(undefined);
     } finally {
-      // Reset the request in progress flag
       setRequestInProgress(false);
     }
   }, [owner, repo, determineWikiStructure, currentToken, effectiveRepoInfo, requestInProgress, messages.loading]);
@@ -1686,13 +1633,11 @@ IMPORTANT:
     // No direct call to fetchRepositoryStructure here, let the useEffect handle it based on effectRan.current = false.
   }, [effectiveRepoInfo, language, messages.loading, activeContentRequests, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, modelExcludedDirs, modelExcludedFiles, isComprehensiveView, authCode, authRequired]);
 
-  // Start wiki generation when component mounts
   useEffect(() => {
     if (effectRan.current === false) {
-      effectRan.current = true; // Set to true immediately to prevent re-entry due to StrictMode
+      effectRan.current = true;
 
       const loadData = async () => {
-        // Try loading from server-side cache first
         setLoadingMessage(messages.loading?.fetchingCache || 'Checking for cached wiki...');
         try {
           const params = new URLSearchParams({
@@ -1705,7 +1650,7 @@ IMPORTANT:
           const response = await fetch(`/api/wiki_cache?${params.toString()}`);
 
           if (response.ok) {
-            const cachedData = await response.json(); // Returns null if no cache
+            const cachedData = await response.json();
             if (cachedData && cachedData.wiki_structure && cachedData.generated_pages && Object.keys(cachedData.generated_pages).length > 0) {
               console.log('Using server-cached wiki data');
               if(cachedData.model) {
@@ -1860,8 +1805,6 @@ IMPORTANT:
           // Proceed to fetch structure if cache loading fails
         }
 
-        // If we reached here, either there was no cache, it was invalid, or an error occurred
-        // Proceed to fetch repository structure
         fetchRepositoryStructure();
       };
 

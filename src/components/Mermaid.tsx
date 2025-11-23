@@ -1,15 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
-// We'll use dynamic import for svg-pan-zoom
 
-// Initialize mermaid with defaults - Japanese aesthetic
 mermaid.initialize({
   startOnLoad: true,
   theme: 'neutral',
   securityLevel: 'loose',
   suppressErrorRendering: true,
   logLevel: 'error',
-  maxTextSize: 100000, // Increase text size limit
+  maxTextSize: 100000,
   htmlLabels: true,
   flowchart: {
     htmlLabels: true,
@@ -175,7 +173,6 @@ interface MermaidProps {
   zoomingEnabled?: boolean;
 }
 
-// Full screen modal component for the diagram
 const FullScreenModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
@@ -184,7 +181,6 @@ const FullScreenModal: React.FC<{
   const modalRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
 
-  // Close on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -201,7 +197,6 @@ const FullScreenModal: React.FC<{
     };
   }, [isOpen, onClose]);
 
-  // Handle click outside to close
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
@@ -218,7 +213,6 @@ const FullScreenModal: React.FC<{
     };
   }, [isOpen, onClose]);
 
-  // Reset zoom when modal opens
   useEffect(() => {
     if (isOpen) {
       setZoom(1);
@@ -316,19 +310,16 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', zoomingEnabled
     window.matchMedia('(prefers-color-scheme: dark)').matches
   );
 
-  // Initialize pan-zoom functionality when SVG is rendered
   useEffect(() => {
     if (svg && zoomingEnabled && containerRef.current) {
       const initializePanZoom = async () => {
         const svgElement = containerRef.current?.querySelector("svg");
         if (svgElement) {
-          // Remove any max-width constraints
           svgElement.style.maxWidth = "none";
           svgElement.style.width = "100%";
           svgElement.style.height = "100%";
 
           try {
-            // Dynamically import svg-pan-zoom only when needed in the browser
             const svgPanZoom = (await import("svg-pan-zoom")).default;
 
             svgPanZoom(svgElement, {
@@ -346,7 +337,6 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', zoomingEnabled
         }
       };
 
-      // Wait for the SVG to be rendered
       setTimeout(() => {
         void initializePanZoom();
       }, 100);
@@ -365,7 +355,6 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', zoomingEnabled
         setError(null);
         setSvg('');
 
-        // Render the chart directly without preprocessing
         const { svg: renderedSvg } = await mermaid.render(idRef.current, chart);
 
         if (!isMounted) return;
@@ -377,7 +366,6 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', zoomingEnabled
 
         setSvg(processedSvg);
 
-        // Call mermaid.contentLoaded to ensure proper initialization
         setTimeout(() => {
           mermaid.contentLoaded();
         }, 50);
@@ -485,7 +473,5 @@ const Mermaid: React.FC<MermaidProps> = ({ chart, className = '', zoomingEnabled
     </>
   );
 };
-
-
 
 export default Mermaid;

@@ -72,7 +72,6 @@ export default function UserSelector({
   const [showDefaultDirs, setShowDefaultDirs] = useState(false);
   const [showDefaultFiles, setShowDefaultFiles] = useState(false);
 
-  // Fetch model configurations from the backend
   useEffect(() => {
     const fetchModelConfig = async () => {
       try {
@@ -88,11 +87,9 @@ export default function UserSelector({
         const data = await response.json();
         setModelConfig(data);
 
-        // Initialize provider and model with defaults from API if not already set
         if (!provider && data.defaultProvider) {
           setProvider(data.defaultProvider);
 
-          // Find the default provider and set its default model
           const selectedProvider = data.providers.find((p: Provider) => p.id === data.defaultProvider);
           if (selectedProvider && selectedProvider.models.length > 0) {
             setModel(selectedProvider.models[0].id);
@@ -109,14 +106,11 @@ export default function UserSelector({
     fetchModelConfig();
   }, [provider, setModel, setProvider]);
 
-  // Handler for changing provider
   const handleProviderChange = (newProvider: string) => {
     setProvider(newProvider);
     setTimeout(() => {
-      // Reset custom model state when changing providers
       setIsCustomModel(false);
 
-      // Set default model for the selected provider
       if (modelConfig) {
         const selectedProvider = modelConfig.providers.find((p: Provider) => p.id === newProvider);
         if (selectedProvider && selectedProvider.models.length > 0) {
@@ -126,7 +120,6 @@ export default function UserSelector({
     }, 10);
   };
 
-  // Default excluded directories from config.py
   const defaultExcludedDirs =
 `./.venv/
 ./venv/
@@ -165,7 +158,6 @@ export default function UserSelector({
 ./temp/
 ./.eng`;
 
-  // Default excluded files from config.py
   const defaultExcludedFiles =
 `package-lock.json
 yarn.lock
@@ -253,7 +245,6 @@ next.config.js
 *.docx
 *.pptx`;
 
-  // Display loading state
   if (isLoading) {
     return (
       <div className="flex flex-col gap-2">

@@ -112,7 +112,6 @@ class WikiExportRequest(BaseModel):
     pages: List[WikiPage] = Field(..., description="List of wiki pages to export")
     format: Literal["markdown", "json"] = Field(..., description="Export format (markdown or json)")
 
-# --- Model Configuration Models ---
 class Model(BaseModel):
     """
     Model for LLM model configuration
@@ -173,19 +172,14 @@ async def get_model_config():
     try:
         logger.info("Fetching model configurations")
 
-        # Create providers from the config file
-        providers = []
-        default_provider = configs.get("default_provider", "google")
+        providers: List[Provider] = []
+        default_provider: str = configs.get("default_provider", "google")
 
-        # Add provider configuration based on config.py
         for provider_id, provider_config in configs["providers"].items():
-            models = []
-            # Add models from config
+            models: List[Model] = []
             for model_id in provider_config["models"].keys():
-                # Get a more user-friendly display name if possible
                 models.append(Model(id=model_id, name=model_id))
 
-            # Add provider with its models
             providers.append(
                 Provider(
                     id=provider_id,
@@ -195,7 +189,6 @@ async def get_model_config():
                 )
             )
 
-        # Create and return the full configuration
         config = ModelConfig(
             providers=providers,
             defaultProvider=default_provider
@@ -204,7 +197,6 @@ async def get_model_config():
 
     except Exception as e:
         logger.error(f"Error creating model configuration: {str(e)}")
-        # Return some default configuration in case of error
         return ModelConfig(
             providers=[
                 Provider(
@@ -284,19 +276,17 @@ async def get_local_repo_structure(path: str = Query(None, description="Path to 
 
     try:
         logger.info(f"Processing local repository at: {path}")
-        file_tree_lines = []
-        readme_content = ""
+        file_tree_lines: list[str] = []
+        readme_content: str = ""
 
         for root, dirs, files in os.walk(path):
-            # Exclude hidden dirs/files and virtual envs
             dirs[:] = [d for d in dirs if not d.startswith('.') and d != '__pycache__' and d != 'node_modules' and d != '.venv']
             for file in files:
                 if file.startswith('.') or file == '__init__.py' or file == '.DS_Store':
                     continue
-                rel_dir = os.path.relpath(root, path)
-                rel_file = os.path.join(rel_dir, file) if rel_dir != '.' else file
+                rel_dir: str = os.path.relpath(root, path)
+                rel_file: str = os.path.join(rel_dir, file) if rel_dir != '.' else file
                 file_tree_lines.append(rel_file)
-                # Find README.md (case-insensitive)
                 if file.lower() == 'readme.md' and not readme_content:
                     try:
                         with open(os.path.join(root, file), 'r', encoding='utf-8') as f:
@@ -305,7 +295,7 @@ async def get_local_repo_structure(path: str = Query(None, description="Path to 
                         logger.warning(f"Could not read README.md: {str(e)}")
                         readme_content = ""
 
-        file_tree_str = '\n'.join(sorted(file_tree_lines))
+        file_tree_str: str = '\n'.join(sorted(file_tree_lines))
         return {"file_tree": file_tree_str, "readme": readme_content}
     except Exception as e:
         logger.error(f"Error processing local repository: {str(e)}")
@@ -401,8 +391,7 @@ def get_wiki_cache_path(owner: str, repo: str, repo_type: str, language: str) ->
     return os.path.join(WIKI_CACHE_DIR, filename)
 
 async def read_wiki_cache(owner: str, repo: str, repo_type: str, language: str) -> Optional[WikiCacheData]:
-    """Reads wiki cache data from the file system."""
-    cache_path = get_wiki_cache_path(owner, repo, repo_type, language)
+    cache_path: str = get_wiki_cache_path(owner, repo, repo_type, language)
     if os.path.exists(cache_path):
         try:
             with open(cache_path, 'r', encoding='utf-8') as f:
@@ -446,8 +435,6 @@ async def save_wiki_cache(data: WikiCacheRequest) -> bool:
         logger.error(f"Unexpected error saving wiki cache to {cache_path}: {e}", exc_info=True)
         return False
 
-# --- Wiki Cache API Endpoints ---
-
 @app.get("/api/wiki_cache", response_model=Optional[WikiCacheData])
 async def get_cached_wiki(
     owner: str = Query(..., description="Repository owner"),
@@ -458,7 +445,6 @@ async def get_cached_wiki(
     """
     Retrieves cached wiki data (structure and generated pages) for a repository.
     """
-    # Language validation
     supported_langs = configs["lang_config"]["supported_languages"]
     if not supported_langs.__contains__(language):
         language = configs["lang_config"]["default"]
@@ -468,8 +454,6 @@ async def get_cached_wiki(
     if cached_data:
         return cached_data
     else:
-        # Return 200 with null body if not found, as frontend expects this behavior
-        # Or, raise HTTPException(status_code=404, detail="Wiki cache not found") if preferred
         logger.info(f"Wiki cache not found for {owner}/{repo} ({repo_type}), lang: {language}")
         return None
 
