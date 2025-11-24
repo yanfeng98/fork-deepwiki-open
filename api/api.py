@@ -379,8 +379,6 @@ from api.simple_chat import chat_completions_stream
 from api.websocket_wiki import handle_websocket_chat
 
 app.add_api_route("/chat/completions/stream", chat_completions_stream, methods=["POST"])
-
-# Add the WebSocket endpoint
 app.add_websocket_route("/ws/chat", handle_websocket_chat)
 
 WIKI_CACHE_DIR: str = os.path.join(get_adalflow_default_root_path(), "wikicache")

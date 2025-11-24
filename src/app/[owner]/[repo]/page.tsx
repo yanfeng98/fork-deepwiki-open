@@ -649,11 +649,10 @@ Remember:
     if (!owner || !repo) {
       setError('Invalid repository information. Owner and repo name are required.');
       setIsLoading(false);
-      setEmbeddingError(false); // Reset embedding error state
+      setEmbeddingError(false);
       return;
     }
 
-    // Skip if structure request is already in progress
     if (structureRequestInProgress) {
       console.log('Wiki structure determination already in progress, skipping duplicate call');
       return;
@@ -663,10 +662,8 @@ Remember:
       setStructureRequestInProgress(true);
       setLoadingMessage(messages.loading?.determiningStructure || 'Determining wiki structure...');
 
-      // Get repository URL
       const repoUrl = getRepoUrl(effectiveRepoInfo);
 
-      // Prepare request body
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const requestBody: Record<string, any> = {
         repo_url: repoUrl,
@@ -797,65 +794,45 @@ IMPORTANT:
         }]
       };
 
-      // Add tokens if available
       addTokensToRequestBody(requestBody, currentToken, effectiveRepoInfo.type, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, language, modelExcludedDirs, modelExcludedFiles, modelIncludedDirs, modelIncludedFiles);
 
-      // Use WebSocket for communication
       let responseText = '';
 
       try {
-        // Create WebSocket URL from the server base URL
         const serverBaseUrl = process.env.SERVER_BASE_URL || 'http://localhost:8001';
         const wsBaseUrl = serverBaseUrl.replace(/^http/, 'ws')? serverBaseUrl.replace(/^https/, 'wss'): serverBaseUrl.replace(/^http/, 'ws');
         const wsUrl = `${wsBaseUrl}/ws/chat`;
 
-        // Create a new WebSocket connection
         const ws = new WebSocket(wsUrl);
 
-        // Create a promise that resolves when the WebSocket connection is complete
         await new Promise<void>((resolve, reject) => {
-          // Set up event handlers
+          const timeout = setTimeout(() => {
+            reject(new Error('WebSocket connection timeout'));
+          }, 5000);
+        
           ws.onopen = () => {
+            clearTimeout(timeout);
             console.log('WebSocket connection established for wiki structure');
-            // Send the request as JSON
             ws.send(JSON.stringify(requestBody));
             resolve();
           };
-
+        
           ws.onerror = (error) => {
             console.error('WebSocket error:', error);
             reject(new Error('WebSocket connection failed'));
           };
-
-          // If the connection doesn't open within 5 seconds, fall back to HTTP
-          const timeout = setTimeout(() => {
-            reject(new Error('WebSocket connection timeout'));
-          }, 5000);
-
-          // Clear the timeout if the connection opens successfully
-          ws.onopen = () => {
-            clearTimeout(timeout);
-            console.log('WebSocket connection established for wiki structure');
-            // Send the request as JSON
-            ws.send(JSON.stringify(requestBody));
-            resolve();
-          };
         });
 
-        // Create a promise that resolves when the WebSocket response is complete
         await new Promise<void>((resolve, reject) => {
-          // Handle incoming messages
           ws.onmessage = (event) => {
             responseText += event.data;
           };
 
-          // Handle WebSocket close
           ws.onclose = () => {
             console.log('WebSocket connection closed for wiki structure');
             resolve();
           };
 
-          // Handle WebSocket errors
           ws.onerror = (error) => {
             console.error('WebSocket error during message reception:', error);
             reject(new Error('WebSocket error during message reception'));
@@ -864,7 +841,6 @@ IMPORTANT:
       } catch (wsError) {
         console.error('WebSocket error, falling back to HTTP:', wsError);
 
-        // Fall back to HTTP if WebSocket fails
         const response = await fetch(`/api/chat/stream`, {
           method: 'POST',
           headers: {
@@ -877,7 +853,6 @@ IMPORTANT:
           throw new Error(`Error determining wiki structure: ${response.status}`);
         }
 
-        // Process the response
         responseText = '';
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();

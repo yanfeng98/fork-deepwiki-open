@@ -1,12 +1,11 @@
 import logging
-import os
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from urllib.parse import unquote
 
 import google.generativeai as genai
 from adalflow.components.model_client.ollama_client import OllamaClient
 from adalflow.core.types import ModelType
-from fastapi import WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from api.config import get_model_config, configs, OPENROUTER_API_KEY, OPENAI_API_KEY
@@ -57,7 +56,6 @@ async def handle_websocket_chat(websocket: WebSocket):
     await websocket.accept()
 
     try:
-        # Receive and parse the request data
         request_data = await websocket.receive_json()
         request = ChatCompletionRequest(**request_data)
 
