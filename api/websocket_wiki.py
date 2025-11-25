@@ -22,10 +22,8 @@ from api.logging_config import setup_logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
-
-# Models for the API
 class ChatMessage(BaseModel):
-    role: str  # 'user' or 'assistant'
+    role: str
     content: str
 
 class ChatCompletionRequest(BaseModel):
@@ -38,7 +36,6 @@ class ChatCompletionRequest(BaseModel):
     token: Optional[str] = Field(None, description="Personal access token for private repositories")
     type: Optional[str] = Field("github", description="Type of repository (e.g., 'github', 'gitlab', 'bitbucket')")
 
-    # model parameters
     provider: str = Field("google", description="Model provider (google, openai, openrouter, ollama, azure)")
     model: Optional[str] = Field(None, description="Model name for the specified provider")
 
@@ -57,12 +54,11 @@ async def handle_websocket_chat(websocket: WebSocket):
 
     try:
         request_data = await websocket.receive_json()
-        request = ChatCompletionRequest(**request_data)
+        request: ChatCompletionRequest = ChatCompletionRequest(**request_data)
 
-        # Check if request contains very large input
-        input_too_large = False
+        input_too_large: bool = False
         if request.messages and len(request.messages) > 0:
-            last_message = request.messages[-1]
+            last_message: ChatMessage = request.messages[-1]
             if hasattr(last_message, 'content') and last_message.content:
                 tokens = count_tokens(last_message.content, request.provider == "ollama")
                 logger.info(f"Request size: {tokens} tokens")
@@ -70,15 +66,13 @@ async def handle_websocket_chat(websocket: WebSocket):
                     logger.warning(f"Request exceeds recommended token limit ({tokens} > 7500)")
                     input_too_large = True
 
-        # Create a new RAG instance for this request
         try:
-            request_rag = RAG(provider=request.provider, model=request.model)
+            request_rag: RAG = RAG(provider=request.provider, model=request.model)
 
-            # Extract custom file filter parameters if provided
-            excluded_dirs = None
-            excluded_files = None
-            included_dirs = None
-            included_files = None
+            excluded_dirs: Optional[List[str]] = None
+            excluded_files: Optional[List[str]] = None
+            included_dirs: Optional[List[str]] = None
+            included_files: Optional[List[str]] = None
 
             if request.excluded_dirs:
                 excluded_dirs = [unquote(dir_path) for dir_path in request.excluded_dirs.split('\n') if dir_path.strip()]
@@ -108,7 +102,6 @@ async def handle_websocket_chat(websocket: WebSocket):
                 return
         except Exception as e:
             logger.error(f"Error preparing retriever: {str(e)}")
-            # Check for specific embedding-related errors
             if "All embeddings should be of the same size" in str(e):
                 await websocket.send_text("Error: Inconsistent embedding sizes detected. Some documents may have failed to embed properly. Please try again.")
             else:
@@ -116,23 +109,21 @@ async def handle_websocket_chat(websocket: WebSocket):
             await websocket.close()
             return
 
-        # Validate request
         if not request.messages or len(request.messages) == 0:
             await websocket.send_text("Error: No messages provided")
             await websocket.close()
             return
 
-        last_message = request.messages[-1]
+        last_message: str = request.messages[-1]
         if last_message.role != "user":
             await websocket.send_text("Error: Last message must be from the user")
             await websocket.close()
             return
 
-        # Process previous messages to build conversation history
         for i in range(0, len(request.messages) - 1, 2):
             if i + 1 < len(request.messages):
-                user_msg = request.messages[i]
-                assistant_msg = request.messages[i + 1]
+                user_msg: str = request.messages[i]
+                assistant_msg: str = request.messages[i + 1]
 
                 if user_msg.role == "user" and assistant_msg.role == "assistant":
                     request_rag.memory.add_dialog_turn(
@@ -140,28 +131,21 @@ async def handle_websocket_chat(websocket: WebSocket):
                         assistant_response=assistant_msg.content
                     )
 
-        # Check if this is a Deep Research request
-        is_deep_research = False
-        research_iteration = 1
+        is_deep_research: bool = False
+        research_iteration: int = 1
 
-        # Process messages to detect Deep Research requests
         for msg in request.messages:
             if hasattr(msg, 'content') and msg.content and "[DEEP RESEARCH]" in msg.content:
                 is_deep_research = True
-                # Only remove the tag from the last message
                 if msg == request.messages[-1]:
-                    # Remove the Deep Research tag
                     msg.content = msg.content.replace("[DEEP RESEARCH]", "").strip()
 
-        # Count research iterations if this is a Deep Research request
         if is_deep_research:
             research_iteration = sum(1 for msg in request.messages if msg.role == 'assistant') + 1
             logger.info(f"Deep Research request detected - iteration {research_iteration}")
 
-            # Check if this is a continuation request
             if "continue" in last_message.content.lower() and "research" in last_message.content.lower():
-                # Find the original topic from the first user message
-                original_topic = None
+                original_topic: str = None
                 for msg in request.messages:
                     if msg.role == "user" and "continue" not in msg.content.lower():
                         original_topic = msg.content.replace("[DEEP RESEARCH]", "").strip()
@@ -169,27 +153,20 @@ async def handle_websocket_chat(websocket: WebSocket):
                         break
 
                 if original_topic:
-                    # Replace the continuation message with the original topic
                     last_message.content = original_topic
                     logger.info(f"Using original topic for research: {original_topic}")
 
-        # Get the query from the last message
-        query = last_message.content
-
-        # Only retrieve documents if input is not too large
-        context_text = ""
+        query: str = last_message.content
+        context_text: str = ""
         retrieved_documents = None
 
         if not input_too_large:
             try:
-                # If filePath exists, modify the query for RAG to focus on the file
-                rag_query = query
+                rag_query: str = query
                 if request.filePath:
-                    # Use the file path to get relevant context about the file
                     rag_query = f"Contexts related to {request.filePath}"
                     logger.info(f"Modified RAG query to focus on file: {request.filePath}")
 
-                # Try to perform RAG retrieval
                 try:
                     # This will use the actual RAG implementation
                     retrieved_documents = request_rag(rag_query, language=request.language)
