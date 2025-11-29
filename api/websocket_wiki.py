@@ -1,8 +1,9 @@
 import logging
-from typing import List, Optional
+from typing import List, Any, Optional
 from urllib.parse import unquote
 
 import google.generativeai as genai
+from adalflow.core.types import Document
 from adalflow.components.model_client.ollama_client import OllamaClient
 from adalflow.core.types import ModelType
 from fastapi import WebSocket, WebSocketDisconnect
@@ -168,66 +169,49 @@ async def handle_websocket_chat(websocket: WebSocket):
                     logger.info(f"Modified RAG query to focus on file: {request.filePath}")
 
                 try:
-                    # This will use the actual RAG implementation
                     retrieved_documents = request_rag(rag_query, language=request.language)
 
                     if retrieved_documents and retrieved_documents[0].documents:
-                        # Format context for the prompt in a more structured way
-                        documents = retrieved_documents[0].documents
+                        documents: list[Document] = retrieved_documents[0].documents
                         logger.info(f"Retrieved {len(documents)} documents")
 
-                        # Group documents by file path
                         docs_by_file = {}
                         for doc in documents:
-                            file_path = doc.meta_data.get('file_path', 'unknown')
+                            file_path: str = doc.meta_data.get('file_path', 'unknown')
                             if file_path not in docs_by_file:
                                 docs_by_file[file_path] = []
                             docs_by_file[file_path].append(doc)
 
-                        # Format context text with file path grouping
-                        context_parts = []
+                        context_parts: list[str] = []
                         for file_path, docs in docs_by_file.items():
-                            # Add file header with metadata
-                            header = f"## File Path: {file_path}\n\n"
-                            # Add document content
-                            content = "\n\n".join([doc.text for doc in docs])
-
+                            header: str = f"## File Path: {file_path}\n\n"
+                            content: str = "\n\n".join([doc.text for doc in docs])
                             context_parts.append(f"{header}{content}")
 
-                        # Join all parts with clear separation
                         context_text = "\n\n" + "-" * 10 + "\n\n".join(context_parts)
                     else:
                         logger.warning("No documents retrieved from RAG")
                 except Exception as e:
                     logger.error(f"Error in RAG retrieval: {str(e)}")
-                    # Continue without RAG if there's an error
 
             except Exception as e:
                 logger.error(f"Error retrieving documents: {str(e)}")
                 context_text = ""
 
-        # Get repository information
-        repo_url = request.repo_url
-        repo_name = repo_url.split("/")[-1] if "/" in repo_url else repo_url
+        repo_url: str = request.repo_url
+        repo_name: str = repo_url.split("/")[-1] if "/" in repo_url else repo_url
+        repo_type: str = request.type
 
-        # Determine repository type
-        repo_type = request.type
+        language_code: str = request.language or configs["lang_config"]["default"]
+        supported_langs: dict[str, str] = configs["lang_config"]["supported_languages"]
+        language_name: str = supported_langs.get(language_code, "English")
 
-        # Get language information
-        language_code = request.language or configs["lang_config"]["default"]
-        supported_langs = configs["lang_config"]["supported_languages"]
-        language_name = supported_langs.get(language_code, "English")
-
-        # Create system prompt
         if is_deep_research:
-            # Check if this is the first iteration
-            is_first_iteration = research_iteration == 1
-
-            # Check if this is the final iteration
-            is_final_iteration = research_iteration >= 5
+            is_first_iteration: bool = research_iteration == 1
+            is_final_iteration: bool = research_iteration >= 5
 
             if is_first_iteration:
-                system_prompt = f"""<role>
+                system_prompt: str = f"""<role>
 You are an expert code analyst examining the {repo_type} repository: {repo_url} ({repo_name}).
 You are conducting a multi-turn Deep Research process to thoroughly investigate the specific topic in the user's query.
 Your goal is to provide detailed, focused information EXCLUSIVELY about this topic.
@@ -257,7 +241,7 @@ IMPORTANT:You MUST respond in {language_name} language.
 - Cite specific files and code sections when relevant
 </style>"""
             elif is_final_iteration:
-                system_prompt = f"""<role>
+                system_prompt: str = f"""<role>
 You are an expert code analyst examining the {repo_type} repository: {repo_url} ({repo_name}).
 You are in the final iteration of a Deep Research process focused EXCLUSIVELY on the latest user query.
 Your goal is to synthesize all previous findings and provide a comprehensive conclusion that directly addresses this specific topic and ONLY this topic.
@@ -289,7 +273,7 @@ IMPORTANT:You MUST respond in {language_name} language.
 - End with actionable insights or recommendations when appropriate
 </style>"""
             else:
-                system_prompt = f"""<role>
+                system_prompt: str = f"""<role>
 You are an expert code analyst examining the {repo_type} repository: {repo_url} ({repo_name}).
 You are currently in iteration {research_iteration} of a Deep Research process focused EXCLUSIVELY on the latest user query.
 Your goal is to build upon previous research iterations and go deeper into this specific topic without deviating from it.
@@ -320,7 +304,7 @@ IMPORTANT:You MUST respond in {language_name} language.
 - Cite specific files and code sections when relevant
 </style>"""
         else:
-            system_prompt = f"""<role>
+            system_prompt: str = f"""<role>
 You are an expert code analyst examining the {repo_type} repository: {repo_url} ({repo_name}).
 You provide direct, concise, and accurate information about code repositories.
 You NEVER start responses with markdown headers or code fences.
@@ -362,46 +346,38 @@ This file contains...
 - Use markdown formatting to improve readability
 </style>"""
 
-        # Fetch file content if provided
-        file_content = ""
+        file_content: str = ""
         if request.filePath:
             try:
-                file_content = get_file_content(request.repo_url, request.filePath, request.type, request.token)
+                file_content: str = get_file_content(request.repo_url, request.filePath, request.type, request.token)
                 logger.info(f"Successfully retrieved content for file: {request.filePath}")
             except Exception as e:
                 logger.error(f"Error retrieving file content: {str(e)}")
-                # Continue without file content if there's an error
 
-        # Format conversation history
-        conversation_history = ""
+        conversation_history: str = ""
         for turn_id, turn in request_rag.memory().items():
             if not isinstance(turn_id, int) and hasattr(turn, 'user_query') and hasattr(turn, 'assistant_response'):
                 conversation_history += f"<turn>\n<user>{turn.user_query.query_str}</user>\n<assistant>{turn.assistant_response.response_str}</assistant>\n</turn>\n"
 
-        # Create the prompt with context
-        prompt = f"/no_think {system_prompt}\n\n"
+        prompt: str = f"/no_think {system_prompt}\n\n"
 
         if conversation_history:
             prompt += f"<conversation_history>\n{conversation_history}</conversation_history>\n\n"
 
-        # Check if filePath is provided and fetch file content if it exists
         if file_content:
-            # Add file content to the prompt after conversation history
             prompt += f"<currentFileContent path=\"{request.filePath}\">\n{file_content}\n</currentFileContent>\n\n"
 
-        # Only include context if it's not empty
-        CONTEXT_START = "<START_OF_CONTEXT>"
-        CONTEXT_END = "<END_OF_CONTEXT>"
+        CONTEXT_START: str = "<START_OF_CONTEXT>"
+        CONTEXT_END: str = "<END_OF_CONTEXT>"
         if context_text.strip():
             prompt += f"{CONTEXT_START}\n{context_text}\n{CONTEXT_END}\n\n"
         else:
-            # Add a note that we're skipping RAG due to size constraints or because it's the isolated API
             logger.info("No context available from RAG")
             prompt += "<note>Answering without retrieval augmentation.</note>\n\n"
 
         prompt += f"<query>\n{query}\n</query>\n\nAssistant: "
 
-        model_config = get_model_config(request.provider, request.model)["model_kwargs"]
+        model_config: dict[str, int|float|Any] = get_model_config(request.provider, request.model)["model_kwargs"]
 
         if request.provider == "ollama":
             prompt += " /no_think"
@@ -448,19 +424,15 @@ This file contains...
         elif request.provider == "openai":
             logger.info(f"Using Openai protocol with model: {request.model}")
 
-            # Check if an API key is set for Openai
             if not OPENAI_API_KEY:
                 logger.warning("OPENAI_API_KEY not configured, but continuing with request")
-                # We'll let the OpenAIClient handle this and return an error message
 
-            # Initialize Openai client
-            model = OpenAIClient()
-            model_kwargs = {
+            model: OpenAIClient = OpenAIClient()
+            model_kwargs: dict[str, str|float|Any] = {
                 "model": request.model,
                 "stream": True,
                 "temperature": model_config["temperature"]
             }
-            # Only add top_p if it exists in the model config
             if "top_p" in model_config:
                 model_kwargs["top_p"] = model_config["top_p"]
 
@@ -514,7 +486,6 @@ This file contains...
                 }
             )
 
-        # Process the response based on the provider
         try:
             if request.provider == "ollama":
                 # Get the response and handle it properly using the previously created api_kwargs
@@ -545,19 +516,16 @@ This file contains...
                     await websocket.close()
             elif request.provider == "openai":
                 try:
-                    # Get the response and handle it properly using the previously created api_kwargs
                     logger.info("Making Openai API call")
                     response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
-                    # Handle streaming response from Openai
                     async for chunk in response:
                         choices = getattr(chunk, "choices", [])
                         if len(choices) > 0:
                             delta = getattr(choices[0], "delta", None)
                             if delta is not None:
-                                text = getattr(delta, "content", None)
+                                text: str = getattr(delta, "content", None)
                                 if text is not None:
                                     await websocket.send_text(text)
-                    # Explicitly close the WebSocket connection after the response is complete
                     await websocket.close()
                 except Exception as e_openai:
                     logger.error(f"Error with Openai API: {str(e_openai)}")

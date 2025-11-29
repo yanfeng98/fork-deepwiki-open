@@ -334,54 +334,40 @@ export default function RepoWikiPage() {
     fetchAuthStatus();
   }, []);
 
-  // Generate content for a wiki page
   const generatePageContent = useCallback(async (page: WikiPage, owner: string, repo: string) => {
     return new Promise<void>(async (resolve) => {
       try {
-        // Skip if content already exists
         if (generatedPages[page.id]?.content) {
           resolve();
           return;
         }
 
-        // Skip if this page is already being processed
-        // Use a synchronized pattern to avoid race conditions
         if (activeContentRequests.get(page.id)) {
           console.log(`Page ${page.id} (${page.title}) is already being processed, skipping duplicate call`);
           resolve();
           return;
         }
 
-        // Mark this page as being processed immediately to prevent race conditions
-        // This ensures that if multiple calls happen nearly simultaneously, only one proceeds
         activeContentRequests.set(page.id, true);
 
-        // Validate repo info
         if (!owner || !repo) {
           throw new Error('Invalid repository information. Owner and repo name are required.');
         }
 
-        // Mark page as in progress
         setPagesInProgress(prev => new Set(prev).add(page.id));
-        // Don't set loading message for individual pages during queue processing
 
         const filePaths = page.filePaths;
 
-        // Store the initially generated content BEFORE rendering/potential modification
         setGeneratedPages(prev => ({
           ...prev,
-          [page.id]: { ...page, content: 'Loading...' } // Placeholder
+          [page.id]: { ...page, content: 'Loading...' }
         }));
-        setOriginalMarkdown(prev => ({ ...prev, [page.id]: '' })); // Clear previous original
+        setOriginalMarkdown(prev => ({ ...prev, [page.id]: '' }));
 
-        // Make API call to generate page content
         console.log(`Starting content generation for page: ${page.title}`);
 
-        // Get repository URL
         const repoUrl = getRepoUrl(effectiveRepoInfo);
-
-        // Create the prompt content - simplified to avoid message dialogs
- const promptContent =
+        const promptContent =
 `You are an expert technical writer and software architect.
 Your task is to generate a comprehensive and accurate technical wiki page in Markdown format about a specific feature, system, or module within a given software project.
 
@@ -490,7 +476,6 @@ Remember:
 - Structure the document logically for easy understanding by other developers.
 `;
 
-        // Prepare request body
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const requestBody: Record<string, any> = {
           repo_url: repoUrl,
@@ -501,27 +486,20 @@ Remember:
           }]
         };
 
-        // Add tokens if available
         addTokensToRequestBody(requestBody, currentToken, effectiveRepoInfo.type, selectedProviderState, selectedModelState, isCustomSelectedModelState, customSelectedModelState, language, modelExcludedDirs, modelExcludedFiles, modelIncludedDirs, modelIncludedFiles);
 
-        // Use WebSocket for communication
         let content = '';
 
         try {
-          // Create WebSocket URL from the server base URL
           const serverBaseUrl = process.env.SERVER_BASE_URL || 'http://localhost:8001';
           const wsBaseUrl = serverBaseUrl.replace(/^http/, 'ws')? serverBaseUrl.replace(/^https/, 'wss'): serverBaseUrl.replace(/^http/, 'ws');
           const wsUrl = `${wsBaseUrl}/ws/chat`;
 
-          // Create a new WebSocket connection
           const ws = new WebSocket(wsUrl);
 
-          // Create a promise that resolves when the WebSocket connection is complete
           await new Promise<void>((resolve, reject) => {
-            // Set up event handlers
             ws.onopen = () => {
               console.log(`WebSocket connection established for page: ${page.title}`);
-              // Send the request as JSON
               ws.send(JSON.stringify(requestBody));
               resolve();
             };
@@ -531,35 +509,28 @@ Remember:
               reject(new Error('WebSocket connection failed'));
             };
 
-            // If the connection doesn't open within 5 seconds, fall back to HTTP
             const timeout = setTimeout(() => {
               reject(new Error('WebSocket connection timeout'));
             }, 5000);
 
-            // Clear the timeout if the connection opens successfully
             ws.onopen = () => {
               clearTimeout(timeout);
               console.log(`WebSocket connection established for page: ${page.title}`);
-              // Send the request as JSON
               ws.send(JSON.stringify(requestBody));
               resolve();
             };
           });
 
-          // Create a promise that resolves when the WebSocket response is complete
           await new Promise<void>((resolve, reject) => {
-            // Handle incoming messages
             ws.onmessage = (event) => {
               content += event.data;
             };
 
-            // Handle WebSocket close
             ws.onclose = () => {
               console.log(`WebSocket connection closed for page: ${page.title}`);
               resolve();
             };
 
-            // Handle WebSocket errors
             ws.onerror = (error) => {
               console.error('WebSocket error during message reception:', error);
               reject(new Error('WebSocket error during message reception'));
@@ -606,15 +577,12 @@ Remember:
           }
         }
 
-        // Clean up markdown delimiters
         content = content.replace(/^```markdown\s*/i, '').replace(/```\s*$/i, '');
 
         console.log(`Received content for ${page.title}, length: ${content.length} characters`);
 
-        // Store the FINAL generated content
         const updatedPage = { ...page, content };
         setGeneratedPages(prev => ({ ...prev, [page.id]: updatedPage }));
-        // Store this as the original for potential mermaid retries
         setOriginalMarkdown(prev => ({ ...prev, [page.id]: content }));
 
         resolve();
@@ -878,10 +846,8 @@ IMPORTANT:
          throw new Error('The specified Ollama embedding model was not found. Please ensure the model is installed locally or select a different embedding model in the configuration.');
        }
 
-        // Clean up markdown delimiters
       responseText = responseText.replace(/^```(?:xml)?\s*/i, '').replace(/```\s*$/i, '');
 
-      // Extract wiki structure from response
       const xmlMatch = responseText.match(/<wiki_structure>[\s\S]*?<\/wiki_structure>/m);
       if (!xmlMatch) {
         throw new Error('No valid XML found in response');
@@ -889,29 +855,22 @@ IMPORTANT:
 
       let xmlText = xmlMatch[0];
       xmlText = xmlText.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-      // Try parsing with DOMParser
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(xmlText, "text/xml");
 
-      // Check for parsing errors
       const parseError = xmlDoc.querySelector('parsererror');
       if (parseError) {
-        // Log the first few elements to see what was parsed
         const elements = xmlDoc.querySelectorAll('*');
         if (elements.length > 0) {
           console.log('First 5 element names:',
             Array.from(elements).slice(0, 5).map(el => el.nodeName).join(', '));
         }
-
-        // We'll continue anyway since the XML might still be usable
       }
 
-      // Extract wiki structure
       let title = '';
       let description = '';
       let pages: WikiPage[] = [];
 
-      // Try using DOM parsing first
       const titleEl = xmlDoc.querySelector('title');
       const descriptionEl = xmlDoc.querySelector('description');
       const pagesEls = xmlDoc.querySelectorAll('page');
@@ -919,7 +878,6 @@ IMPORTANT:
       title = titleEl ? titleEl.textContent || '' : '';
       description = descriptionEl ? descriptionEl.textContent || '' : '';
 
-      // Parse pages using DOM
       pages = [];
 
       if (parseError && (!pagesEls || pagesEls.length === 0)) {
@@ -951,23 +909,20 @@ IMPORTANT:
         pages.push({
           id,
           title,
-          content: '', // Will be generated later
+          content: '',
           filePaths,
           importance,
           relatedPages
         });
       });
 
-      // Extract sections if they exist in the XML
       const sections: WikiSection[] = [];
       const rootSections: string[] = [];
 
-      // Try to parse sections if we're in comprehensive view
       if (isComprehensiveView) {
         const sectionsEls = xmlDoc.querySelectorAll('section');
 
         if (sectionsEls && sectionsEls.length > 0) {
-          // Process sections
           sectionsEls.forEach(sectionEl => {
             const id = sectionEl.getAttribute('id') || `section-${sections.length + 1}`;
             const titleEl = sectionEl.querySelector('title');
@@ -993,7 +948,6 @@ IMPORTANT:
               subsections: subsections.length > 0 ? subsections : undefined
             });
 
-            // Check if this is a root section (not referenced by any other section)
             let isReferenced = false;
             sectionsEls.forEach(otherSection => {
               const otherSectionRefs = otherSection.querySelectorAll('section_ref');
@@ -1011,7 +965,6 @@ IMPORTANT:
         }
       }
 
-      // Create wiki structure
       const wikiStructure: WikiStructure = {
         id: 'wiki',
         title,
@@ -1024,44 +977,34 @@ IMPORTANT:
       setWikiStructure(wikiStructure);
       setCurrentPageId(pages.length > 0 ? pages[0].id : undefined);
 
-      // Start generating content for all pages with controlled concurrency
       if (pages.length > 0) {
-        // Mark all pages as in progress
         const initialInProgress = new Set(pages.map(p => p.id));
         setPagesInProgress(initialInProgress);
 
         console.log(`Starting generation for ${pages.length} pages with controlled concurrency`);
 
-        // Maximum concurrent requests
         const MAX_CONCURRENT = 1;
 
-        // Create a queue of pages
         const queue = [...pages];
         let activeRequests = 0;
 
-        // Function to process next items in queue
         const processQueue = () => {
-          // Process as many items as we can up to our concurrency limit
           while (queue.length > 0 && activeRequests < MAX_CONCURRENT) {
             const page = queue.shift();
             if (page) {
               activeRequests++;
               console.log(`Starting page ${page.title} (${activeRequests} active, ${queue.length} remaining)`);
 
-              // Start generating content for this page
               generatePageContent(page, owner, repo)
                 .finally(() => {
-                  // When done (success or error), decrement active count and process more
                   activeRequests--;
                   console.log(`Finished page ${page.title} (${activeRequests} active, ${queue.length} remaining)`);
 
-                  // Check if all work is done (queue empty and no active requests)
                   if (queue.length === 0 && activeRequests === 0) {
                     console.log("All page generation tasks completed.");
                     setIsLoading(false);
                     setLoadingMessage(undefined);
                   } else {
-                    // Only process more if there are items remaining and we're under capacity
                     if (queue.length > 0 && activeRequests < MAX_CONCURRENT) {
                       processQueue();
                     }
@@ -1070,24 +1013,18 @@ IMPORTANT:
             }
           }
 
-          // Additional check: If the queue started empty or becomes empty and no requests were started/active
           if (queue.length === 0 && activeRequests === 0 && pages.length > 0 && pagesInProgress.size === 0) {
-            // This handles the case where the queue might finish before the finally blocks fully update activeRequests
-            // or if the initial queue was processed very quickly
             console.log("Queue empty and no active requests after loop, ensuring loading is false.");
             setIsLoading(false);
             setLoadingMessage(undefined);
           } else if (pages.length === 0) {
-            // Handle case where there were no pages to begin with
             setIsLoading(false);
             setLoadingMessage(undefined);
           }
         };
 
-        // Start processing the queue
         processQueue();
       } else {
-        // Set loading to false if there were no pages found
         setIsLoading(false);
         setLoadingMessage(undefined);
       }
@@ -1789,11 +1726,8 @@ IMPORTANT:
       console.log('Skipping duplicate repository fetch/cache check');
     }
 
-    // Clean up function for this effect is not strictly necessary for loadData,
-    // but keeping the main unmount cleanup in the other useEffect
   }, [effectiveRepoInfo, effectiveRepoInfo.owner, effectiveRepoInfo.repo, effectiveRepoInfo.type, language, fetchRepositoryStructure, messages.loading?.fetchingCache, isComprehensiveView]);
 
-  // Save wiki to server-side cache when generation is complete
   useEffect(() => {
     const saveCache = async () => {
       if (!isLoading &&
