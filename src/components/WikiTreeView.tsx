@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import { FaChevronRight, FaChevronDown } from 'react-icons/fa';
 
-// Import interfaces from the page component
 interface WikiPage {
   id: string;
   title: string;
@@ -129,7 +128,6 @@ const WikiTreeView: React.FC<WikiTreeViewProps> = ({
     );
   };
 
-  // If there are no sections defined yet, or if sections/rootSections are empty arrays, fall back to the flat list view
   if (!wikiStructure.sections || wikiStructure.sections.length === 0 || !wikiStructure.rootSections || wikiStructure.rootSections.length === 0) {
     console.log("WikiTreeView: Falling back to flat list view due to missing or empty sections/rootSections");
     return (
@@ -163,7 +161,6 @@ const WikiTreeView: React.FC<WikiTreeViewProps> = ({
     );
   }
 
-  // Log information about the sections for debugging
   console.log("WikiTreeView: Rendering tree view with sections:", wikiStructure.sections);
   console.log("WikiTreeView: Root sections:", wikiStructure.rootSections);
 

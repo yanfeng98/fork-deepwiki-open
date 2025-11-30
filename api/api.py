@@ -88,7 +88,7 @@ class WikiCacheData(BaseModel):
     """
     wiki_structure: WikiStructureModel
     generated_pages: Dict[str, WikiPage]
-    repo_url: Optional[str] = None  #compatible for old cache
+    repo_url: Optional[str] = None
     repo: Optional[RepoInfo] = None
     provider: Optional[str] = None
     model: Optional[str] = None
@@ -225,26 +225,20 @@ async def export_wiki(request: WikiExportRequest):
     try:
         logger.info(f"Exporting wiki for {request.repo_url} in {request.format} format")
 
-        # Extract repository name from URL for the filename
-        repo_parts = request.repo_url.rstrip('/').split('/')
-        repo_name = repo_parts[-1] if len(repo_parts) > 0 else "wiki"
-
-        # Get current timestamp for the filename
+        repo_parts: list[str] = request.repo_url.rstrip('/').split('/')
+        repo_name: str = repo_parts[-1] if len(repo_parts) > 0 else "wiki"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         if request.format == "markdown":
-            # Generate Markdown content
-            content = generate_markdown_export(request.repo_url, request.pages)
-            filename = f"{repo_name}_wiki_{timestamp}.md"
-            media_type = "text/markdown"
-        else:  # JSON format
-            # Generate JSON content
-            content = generate_json_export(request.repo_url, request.pages)
-            filename = f"{repo_name}_wiki_{timestamp}.json"
-            media_type = "application/json"
+            content: str = generate_markdown_export(request.repo_url, request.pages)
+            filename: str = f"{repo_name}_wiki_{timestamp}.md"
+            media_type: str = "text/markdown"
+        else:
+            content: str = generate_json_export(request.repo_url, request.pages)
+            filename: str = f"{repo_name}_wiki_{timestamp}.json"
+            media_type: str = "application/json"
 
-        # Create response with appropriate headers for file download
-        response = Response(
+        response: Response = Response(
             content=content,
             media_type=media_type,
             headers={
@@ -305,65 +299,36 @@ async def get_local_repo_structure(path: str = Query(None, description="Path to 
         )
 
 def generate_markdown_export(repo_url: str, pages: List[WikiPage]) -> str:
-    """
-    Generate Markdown export of wiki pages.
-
-    Args:
-        repo_url: The repository URL
-        pages: List of wiki pages
-
-    Returns:
-        Markdown content as string
-    """
-    # Start with metadata
-    markdown = f"# Wiki Documentation for {repo_url}\n\n"
+    markdown: str = f"# Wiki Documentation for {repo_url}\n\n"
     markdown += f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
 
-    # Add table of contents
     markdown += "## Table of Contents\n\n"
     for page in pages:
         markdown += f"- [{page.title}](#{page.id})\n"
     markdown += "\n"
 
-    # Add each page
     for page in pages:
         markdown += f"<a id='{page.id}'></a>\n\n"
         markdown += f"## {page.title}\n\n"
 
-
-
-        # Add related pages
         if page.relatedPages and len(page.relatedPages) > 0:
             markdown += "### Related Pages\n\n"
-            related_titles = []
+            related_titles: list[str] = []
             for related_id in page.relatedPages:
-                # Find the title of the related page
-                related_page = next((p for p in pages if p.id == related_id), None)
+                related_page: WikiPage = next((p for p in pages if p.id == related_id), None)
                 if related_page:
                     related_titles.append(f"[{related_page.title}](#{related_id})")
 
             if related_titles:
                 markdown += "Related topics: " + ", ".join(related_titles) + "\n\n"
 
-        # Add page content
         markdown += f"{page.content}\n\n"
         markdown += "---\n\n"
 
     return markdown
 
 def generate_json_export(repo_url: str, pages: List[WikiPage]) -> str:
-    """
-    Generate JSON export of wiki pages.
-
-    Args:
-        repo_url: The repository URL
-        pages: List of wiki pages
-
-    Returns:
-        JSON content as string
-    """
-    # Create a dictionary with metadata and pages
-    export_data = {
+    export_data: dict[str, list|dict] = {
         "metadata": {
             "repository": repo_url,
             "generated_at": datetime.now().isoformat(),
@@ -372,7 +337,6 @@ def generate_json_export(repo_url: str, pages: List[WikiPage]) -> str:
         "pages": [page.model_dump() for page in pages]
     }
 
-    # Convert to JSON string with pretty formatting
     return json.dumps(export_data, indent=2)
 
 from api.simple_chat import chat_completions_stream
@@ -401,25 +365,22 @@ async def read_wiki_cache(owner: str, repo: str, repo_type: str, language: str) 
     return None
 
 async def save_wiki_cache(data: WikiCacheRequest) -> bool:
-    """Saves wiki cache data to the file system."""
-    cache_path = get_wiki_cache_path(data.repo.owner, data.repo.repo, data.repo.type, data.language)
+    cache_path: str = get_wiki_cache_path(data.repo.owner, data.repo.repo, data.repo.type, data.language)
     logger.info(f"Attempting to save wiki cache. Path: {cache_path}")
     try:
-        payload = WikiCacheData(
+        payload: WikiCacheData = WikiCacheData(
             wiki_structure=data.wiki_structure,
             generated_pages=data.generated_pages,
             repo=data.repo,
             provider=data.provider,
             model=data.model
         )
-        # Log size of data to be cached for debugging (avoid logging full content if large)
         try:
-            payload_json = payload.model_dump_json()
-            payload_size = len(payload_json.encode('utf-8'))
+            payload_json: str = payload.model_dump_json()
+            payload_size: int = len(payload_json.encode('utf-8'))
             logger.info(f"Payload prepared for caching. Size: {payload_size} bytes.")
         except Exception as ser_e:
             logger.warning(f"Could not serialize payload for size logging: {ser_e}")
-
 
         logger.info(f"Writing cache file to: {cache_path}")
         with open(cache_path, 'w', encoding='utf-8') as f:
@@ -460,8 +421,7 @@ async def store_wiki_cache(request_data: WikiCacheRequest):
     """
     Stores generated wiki data (structure and pages) to the server-side cache.
     """
-    # Language validation
-    supported_langs = configs["lang_config"]["supported_languages"]
+    supported_langs: list[str] = configs["lang_config"]["supported_languages"]
 
     if not supported_langs.__contains__(request_data.language):
         request_data.language = configs["lang_config"]["default"]

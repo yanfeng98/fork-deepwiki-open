@@ -1353,7 +1353,6 @@ IMPORTANT:
     }
   }, [owner, repo, determineWikiStructure, currentToken, effectiveRepoInfo, requestInProgress, messages.loading]);
 
-  // Function to export wiki content
   const exportWiki = useCallback(async (format: 'markdown' | 'json') => {
     if (!wikiStructure || Object.keys(generatedPages).length === 0) {
       setExportError('No wiki content to export');
@@ -1365,9 +1364,7 @@ IMPORTANT:
       setExportError(null);
       setLoadingMessage(`${language === 'ja' ? 'Wikiを' : 'Exporting wiki as '} ${format} ${language === 'ja' ? 'としてエクスポート中...' : '...'}`);
 
-      // Prepare the pages for export
       const pagesToExport = wikiStructure.pages.map(page => {
-        // Use the generated content if available, otherwise use an empty string
         const content = generatedPages[page.id]?.content || 'Content not generated';
         return {
           ...page,
@@ -1375,10 +1372,8 @@ IMPORTANT:
         };
       });
 
-      // Get repository URL
       const repoUrl = getRepoUrl(effectiveRepoInfo);
 
-      // Make API call to export wiki
       const response = await fetch(`/export/wiki`, {
         method: 'POST',
         headers: {
@@ -1397,7 +1392,6 @@ IMPORTANT:
         throw new Error(`Error exporting wiki: ${response.status} - ${errorText}`);
       }
 
-      // Get the filename from the Content-Disposition header if available
       const contentDisposition = response.headers.get('Content-Disposition');
       let filename = `${effectiveRepoInfo.repo}_wiki.${format === 'markdown' ? 'md' : 'json'}`;
 
@@ -1408,7 +1402,6 @@ IMPORTANT:
         }
       }
 
-      // Convert the response to a blob and download it
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -1744,7 +1737,6 @@ IMPORTANT:
           console.log('Attempting to save wiki data to server cache via Next.js proxy');
 
           try {
-            // Make sure wikiStructure has sections and rootSections
             const structureToCache = {
               ...wikiStructure,
               sections: wikiStructure.sections || [],
@@ -2001,8 +1993,6 @@ IMPORTANT:
                     {generatedPages[currentPageId].title}
                   </h3>
 
-
-
                   <div className="prose prose-sm md:prose-base lg:prose-lg max-w-none">
                     <Markdown
                       content={generatedPages[currentPageId].content}
@@ -2073,7 +2063,6 @@ IMPORTANT:
           <div className="flex items-center justify-end p-3 absolute top-0 right-0 z-10">
             <button
               onClick={() => {
-                // Just close the modal without clearing the conversation
                 setIsAskModalOpen(false);
               }}
               className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors bg-[var(--card-bg)]/80 rounded-full p-2"

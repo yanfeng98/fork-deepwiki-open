@@ -57,7 +57,6 @@ const Ask: React.FC<AskProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [deepResearch, setDeepResearch] = useState(false);
 
-  // Model selection state
   const [selectedProvider, setSelectedProvider] = useState(provider);
   const [selectedModel, setSelectedModel] = useState(model);
   const [isCustomSelectedModel, setIsCustomSelectedModel] = useState(isCustomModel);

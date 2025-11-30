@@ -11,7 +11,6 @@ interface MarkdownProps {
 }
 
 const Markdown: React.FC<MarkdownProps> = ({ content }) => {
-  // Define markdown components
   const MarkdownComponents: React.ComponentProps<typeof ReactMarkdown>['components'] = {
     p({ children, ...props }: { children?: React.ReactNode }) {
       return <p className="mb-3 text-sm leading-relaxed dark:text-white" {...props}>{children}</p>;
@@ -20,7 +19,6 @@ const Markdown: React.FC<MarkdownProps> = ({ content }) => {
       return <h1 className="text-xl font-bold mt-6 mb-3 dark:text-white" {...props}>{children}</h1>;
     },
     h2({ children, ...props }: { children?: React.ReactNode }) {
-      // Special styling for ReAct headings
       if (children && typeof children === 'string') {
         const text = children.toString();
         if (text.includes('Thought') || text.includes('Action') || text.includes('Observation') || text.includes('Answer')) {
@@ -116,13 +114,12 @@ const Markdown: React.FC<MarkdownProps> = ({ content }) => {
       className?: string;
       children?: React.ReactNode;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      [key: string]: any; // Using any here as it's required for ReactMarkdown components
+      [key: string]: any;
     }) {
       const { inline, className, children, ...otherProps } = props;
       const match = /language-(\w+)/.exec(className || '');
       const codeContent = children ? String(children).replace(/\n$/, '') : '';
 
-      // Handle Mermaid diagrams
       if (!inline && match && match[1] === 'mermaid') {
         return (
           <div className="my-8 bg-gray-50 dark:bg-gray-800 rounded-md overflow-hidden shadow-sm">
@@ -135,7 +132,6 @@ const Markdown: React.FC<MarkdownProps> = ({ content }) => {
         );
       }
 
-      // Handle code blocks
       if (!inline && match) {
         return (
           <div className="my-6 rounded-md overflow-hidden text-sm shadow-sm">
@@ -180,7 +176,6 @@ const Markdown: React.FC<MarkdownProps> = ({ content }) => {
         );
       }
 
-      // Handle inline code
       return (
         <code
           className={`${className} font-mono bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-pink-500 dark:text-pink-400 text-sm`}
